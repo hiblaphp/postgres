@@ -3,12 +3,12 @@
 namespace Hibla\Postgres;
 
 use Hibla\Async\Timer;
-use Hibla\Postgres\Exception\ConfigurationException;
-use Hibla\Postgres\Exception\NotInitializedException;
-use Hibla\Postgres\Exception\NotInTransactionException;
-use Hibla\Postgres\Exception\QueryException;
-use Hibla\Postgres\Exception\TransactionException;
-use Hibla\Postgres\Exception\TransactionFailedException;
+use Hibla\Postgres\Exceptions\ConfigurationException;
+use Hibla\Postgres\Exceptions\NotInitializedException;
+use Hibla\Postgres\Exceptions\NotInTransactionException;
+use Hibla\Postgres\Exceptions\QueryException;
+use Hibla\Postgres\Exceptions\TransactionException;
+use Hibla\Postgres\Exceptions\TransactionFailedException;
 use Hibla\Postgres\Manager\PoolManager;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use PgSql\Connection;
@@ -26,7 +26,7 @@ use function Hibla\await;
  * Each instance is completely independent, allowing true multi-database support
  * without global state.
  */
-final class PgSQLConnection
+final class AsyncPgSQLConnection
 {
     /** @var PoolManager|null Connection pool instance for this connection */
     private ?PoolManager $pool = null;

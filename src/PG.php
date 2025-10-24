@@ -2,12 +2,12 @@
 
 namespace Hibla\Postgres;
 
-use Hibla\Postgres\Exception\ConfigurationException;
-use Hibla\Postgres\Exception\NotInitializedException;
-use Hibla\Postgres\Exception\NotInTransactionException;
-use Hibla\Postgres\Exception\QueryException;
-use Hibla\Postgres\Exception\TransactionException;
-use Hibla\Postgres\Exception\TransactionFailedException;
+use Hibla\Postgres\Exceptions\ConfigurationException;
+use Hibla\Postgres\Exceptions\NotInitializedException;
+use Hibla\Postgres\Exceptions\NotInTransactionException;
+use Hibla\Postgres\Exceptions\QueryException;
+use Hibla\Postgres\Exceptions\TransactionException;
+use Hibla\Postgres\Exceptions\TransactionFailedException;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use PgSql\Connection;
 
@@ -18,10 +18,10 @@ use PgSql\Connection;
  * providing convenient static methods for common database tasks in
  * single-database applications.
  */
-final class PgSQL
+final class PG
 {
-    /** @var PgSQLConnection|null Underlying connection instance */
-    private static ?PgSQLConnection $instance = null;
+    /** @var AsyncPgSQLConnection|null Underlying connection instance */
+    private static ?AsyncPgSQLConnection $instance = null;
 
     /** @var bool Tracks initialization state */
     private static bool $isInitialized = false;
@@ -50,7 +50,7 @@ final class PgSQL
             return;
         }
 
-        self::$instance = new PgSQLConnection($dbConfig, $poolSize);
+        self::$instance = new AsyncPgSQLConnection($dbConfig, $poolSize);
         self::$isInitialized = true;
     }
 
@@ -231,13 +231,13 @@ final class PgSQL
     /**
      * Gets the underlying PgSQLConnection instance.
      *
-     * @return PgSQLConnection The initialized connection instance
+     * @return AsyncPgSQLConnection The initialized connection instance
      *
      * @throws NotInitializedException If PgSQL has not been initialized
      *
      * @internal This method is for internal use only
      */
-    private static function getInstance(): PgSQLConnection
+    private static function getInstance(): AsyncPgSQLConnection
     {
         if (! self::$isInitialized || self::$instance === null) {
             throw new NotInitializedException(

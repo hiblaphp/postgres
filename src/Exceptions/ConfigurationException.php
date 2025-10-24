@@ -1,6 +1,6 @@
 <?php
 
-namespace Hibla\Postgres\Exception;
+namespace Hibla\Postgres\Exceptions;
 
 /**
  * Thrown when database configuration is invalid.

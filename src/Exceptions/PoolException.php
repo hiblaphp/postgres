@@ -1,6 +1,6 @@
 <?php
 
-namespace Hibla\Postgres\Exception;
+namespace Hibla\Postgres\Exceptions;
 
 /**
  * Base exception for connection pool-related errors.

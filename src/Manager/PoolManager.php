@@ -2,7 +2,7 @@
 
 namespace Hibla\Postgres\Manager;
 
-use Hibla\Postgres\Exception\PoolException;
+use Hibla\Postgres\Exceptions\PoolException;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
 use InvalidArgumentException;

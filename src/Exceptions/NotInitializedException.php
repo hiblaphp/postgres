@@ -1,6 +1,6 @@
 <?php
 
-namespace Hibla\Postgres\Exception;
+namespace Hibla\Postgres\Exceptions;
 
 /**
  * Thrown when a PgSQLConnection instance is used before initialization.
