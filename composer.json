@@ -1,0 +1,16 @@
+{
+    "name": "hiblaphp/postgres",
+    "description": "High Performance Pure Non Blocking Postgre Driver",
+    "type": "library",
+    "license": "MIT",
+    "autoload": {
+        "psr-4": {
+            "Hiblaphp\\Postgres\\": "src/"
+        }
+    },
+    "require": {
+        "hiblaphp/event-loop": "dev-main",
+        "hiblaphp/promise": "dev-main",
+        "hiblaphp/async": "dev-main"
+    }
+}
