@@ -110,7 +110,7 @@ final class PgSQLConnection
 
         $this->ensureTransactionCallbacksInitialized();
 
-        if (!isset($this->transactionCallbacks[$connection])) {
+        if (! isset($this->transactionCallbacks[$connection])) {
             throw new TransactionException('Transaction state not found.');
         }
 
@@ -150,7 +150,7 @@ final class PgSQLConnection
 
         $this->ensureTransactionCallbacksInitialized();
 
-        if (!isset($this->transactionCallbacks[$connection])) {
+        if (! isset($this->transactionCallbacks[$connection])) {
             throw new TransactionException('Transaction state not found.');
         }
 
@@ -187,6 +187,7 @@ final class PgSQLConnection
 
             try {
                 $connection = await($this->getPool()->get());
+
                 return $callback($connection);
             } finally {
                 if ($connection !== null) {
@@ -519,6 +520,7 @@ final class PgSQLConnection
     ): mixed {
         if ($result === false) {
             $error = pg_last_error($connection);
+
             throw new QueryException(
                 'Query execution failed: ' . ($error !== '' ? $error : 'Unknown error'),
                 $sql,
@@ -657,7 +659,7 @@ final class PgSQLConnection
      */
     private function executeCallbacks(Connection $connection, string $type): void
     {
-        if ($this->transactionCallbacks === null || !isset($this->transactionCallbacks[$connection])) {
+        if ($this->transactionCallbacks === null || ! isset($this->transactionCallbacks[$connection])) {
             return;
         }
 
@@ -721,7 +723,7 @@ final class PgSQLConnection
      */
     private function getPool(): PoolManager
     {
-        if (!$this->isInitialized || $this->pool === null) {
+        if (! $this->isInitialized || $this->pool === null) {
             throw new NotInitializedException(
                 'PgSQLConnection instance has not been initialized or has been reset.'
             );

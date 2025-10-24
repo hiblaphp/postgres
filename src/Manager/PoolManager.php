@@ -2,10 +2,10 @@
 
 namespace Hibla\Postgres\Manager;
 
-use InvalidArgumentException;
-use PgSql\Connection;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
+use InvalidArgumentException;
+use PgSql\Connection;
 use RuntimeException;
 use SplQueue;
 use Throwable;
@@ -69,8 +69,8 @@ class PoolManager
         $this->configValidated = true;
         $this->dbConfig = $dbConfig;
         $this->maxSize = $maxSize;
-        $this->pool = new SplQueue;
-        $this->waiters = new SplQueue;
+        $this->pool = new SplQueue();
+        $this->waiters = new SplQueue();
     }
 
     /**
@@ -118,7 +118,7 @@ class PoolManager
         }
 
         /** @var Promise<Connection> $promise */
-        $promise = new Promise;
+        $promise = new Promise();
         $this->waiters->enqueue($promise);
 
         return $promise;
@@ -214,8 +214,8 @@ class PoolManager
             $promise = $this->waiters->dequeue();
             $promise->reject(new RuntimeException('Pool is being closed'));
         }
-        $this->pool = new SplQueue;
-        $this->waiters = new SplQueue;
+        $this->pool = new SplQueue();
+        $this->waiters = new SplQueue();
         $this->activeConnections = 0;
         $this->lastConnection = null;
     }

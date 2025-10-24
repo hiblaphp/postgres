@@ -239,7 +239,7 @@ final class PgSQL
      */
     private static function getInstance(): PgSQLConnection
     {
-        if (!self::$isInitialized || self::$instance === null) {
+        if (! self::$isInitialized || self::$instance === null) {
             throw new NotInitializedException(
                 'PgSQL has not been initialized. Please call PgSQL::init() at application startup.'
             );
