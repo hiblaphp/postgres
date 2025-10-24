@@ -2,11 +2,11 @@
 
 namespace Hibla\Postgres\Manager;
 
+use Hibla\Postgres\Exception\PoolException;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
 use InvalidArgumentException;
 use PgSql\Connection;
-use RuntimeException;
 use SplQueue;
 use Throwable;
 
@@ -212,7 +212,7 @@ class PoolManager
         while (! $this->waiters->isEmpty()) {
             /** @var Promise<Connection> $promise */
             $promise = $this->waiters->dequeue();
-            $promise->reject(new RuntimeException('Pool is being closed'));
+            $promise->reject(new PoolException('Pool is being closed'));
         }
         $this->pool = new SplQueue();
         $this->waiters = new SplQueue();
@@ -257,7 +257,7 @@ class PoolManager
      *
      * @return Connection The newly created connection resource.
      *
-     * @throws RuntimeException If the connection fails.
+     * @throws PoolException If the connection fails.
      */
     private function createConnection(): Connection
     {
@@ -268,14 +268,14 @@ class PoolManager
         if ($connection === false) {
             $error = pg_last_error();
 
-            throw new RuntimeException('PostgreSQL Connection failed: '.$error);
+            throw new PoolException('PostgreSQL Connection failed: '.$error);
         }
 
         if (pg_connection_status($connection) !== PGSQL_CONNECTION_OK) {
             $error = pg_last_error($connection);
             pg_close($connection);
 
-            throw new RuntimeException('PostgreSQL Connection failed: '.$error);
+            throw new PoolException('PostgreSQL Connection failed: '.$error);
         }
 
         return $connection;
