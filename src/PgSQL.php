@@ -12,7 +12,7 @@ use Throwable;
 use function Hibla\async;
 use function Hibla\await;
 
-final class AsyncPostgreSQL
+final class PgSQL
 {
     private static ?PoolManager $pool = null;
     private static bool $isInitialized = false;
