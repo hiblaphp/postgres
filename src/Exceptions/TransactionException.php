@@ -1,13 +1,13 @@
-<?php 
+<?php
 
-namespace Hibla\Postgres\Exceptions;
+namespace Hibla\Postgres\Exception;
 
-use RuntimeException;
-
-class TransactionException extends RuntimeException
+/**
+ * Base exception for transaction-related errors.
+ *
+ * This exception is thrown when transaction operations fail, including
+ * begin, commit, and rollback operations, as well as callback execution.
+ */
+class TransactionException extends PgSQLException
 {
-    public function __construct(string $message)
-    {
-        parent::__construct($message);
-    }
 }

@@ -2,6 +2,12 @@
 
 namespace Hibla\Postgres;
 
+use Hibla\Postgres\Exception\ConfigurationException;
+use Hibla\Postgres\Exception\NotInitializedException;
+use Hibla\Postgres\Exception\NotInTransactionException;
+use Hibla\Postgres\Exception\QueryException;
+use Hibla\Postgres\Exception\TransactionException;
+use Hibla\Postgres\Exception\TransactionFailedException;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use PgSql\Connection;
 
@@ -35,6 +41,8 @@ final class PgSQL
      *                                          - options: Additional connection options (optional)
      * @param  int  $poolSize  Maximum number of connections in the pool
      * @return void
+     *
+     * @throws ConfigurationException If the provided configuration is invalid
      */
     public static function init(array $dbConfig, int $poolSize = 10): void
     {
@@ -69,7 +77,9 @@ final class PgSQL
      * @param  callable(): void  $callback  Callback to execute on commit
      * @return void
      *
-     * @throws \RuntimeException If not currently in a transaction or if PgSQL is not initialized
+     * @throws NotInitializedException If PgSQL has not been initialized
+     * @throws NotInTransactionException If not currently in a transaction
+     * @throws TransactionException If transaction state is corrupted
      */
     public static function onCommit(callable $callback): void
     {
@@ -82,7 +92,9 @@ final class PgSQL
      * @param  callable(): void  $callback  Callback to execute on rollback
      * @return void
      *
-     * @throws \RuntimeException If not currently in a transaction or if PgSQL is not initialized
+     * @throws NotInitializedException If PgSQL has not been initialized
+     * @throws NotInTransactionException If not currently in a transaction
+     * @throws TransactionException If transaction state is corrupted
      */
     public static function onRollback(callable $callback): void
     {
@@ -100,7 +112,7 @@ final class PgSQL
      * @param  callable(Connection): TResult  $callback  Function that receives Connection instance
      * @return PromiseInterface<TResult> Promise resolving to callback's return value
      *
-     * @throws \RuntimeException If PgSQL is not initialized
+     * @throws NotInitializedException If PgSQL has not been initialized
      */
     public static function run(callable $callback): PromiseInterface
     {
@@ -114,7 +126,8 @@ final class PgSQL
      * @param  array<int, mixed>  $params  Parameter values for prepared statement
      * @return PromiseInterface<array<int, array<string, mixed>>> Promise resolving to array of associative arrays
      *
-     * @throws \RuntimeException If PgSQL is not initialized or if query execution fails
+     * @throws NotInitializedException If PgSQL has not been initialized
+     * @throws QueryException If query execution fails
      */
     public static function query(string $sql, array $params = []): PromiseInterface
     {
@@ -128,7 +141,8 @@ final class PgSQL
      * @param  array<int, mixed>  $params  Parameter values for prepared statement
      * @return PromiseInterface<array<string, mixed>|null> Promise resolving to associative array or null if no rows
      *
-     * @throws \RuntimeException If PgSQL is not initialized or if query execution fails
+     * @throws NotInitializedException If PgSQL has not been initialized
+     * @throws QueryException If query execution fails
      */
     public static function fetchOne(string $sql, array $params = []): PromiseInterface
     {
@@ -142,7 +156,8 @@ final class PgSQL
      * @param  array<int, mixed>  $params  Parameter values for prepared statement
      * @return PromiseInterface<int> Promise resolving to number of affected rows
      *
-     * @throws \RuntimeException If PgSQL is not initialized or if statement execution fails
+     * @throws NotInitializedException If PgSQL has not been initialized
+     * @throws QueryException If statement execution fails
      */
     public static function execute(string $sql, array $params = []): PromiseInterface
     {
@@ -158,7 +173,8 @@ final class PgSQL
      * @param  array<int, mixed>  $params  Parameter values for prepared statement
      * @return PromiseInterface<mixed> Promise resolving to scalar value or null if no rows
      *
-     * @throws \RuntimeException If PgSQL is not initialized or if query execution fails
+     * @throws NotInitializedException If PgSQL has not been initialized
+     * @throws QueryException If query execution fails
      */
     public static function fetchValue(string $sql, array $params = []): PromiseInterface
     {
@@ -176,8 +192,9 @@ final class PgSQL
      * @param  int  $attempts  Number of times to attempt the transaction (default: 1)
      * @return PromiseInterface<mixed> Promise resolving to callback's return value
      *
-     * @throws \RuntimeException If PgSQL is not initialized or if transaction operations fail after all attempts
-     * @throws \Throwable Any exception thrown by the callback after all attempts (after rollback)
+     * @throws NotInitializedException If PgSQL has not been initialized
+     * @throws TransactionFailedException If transaction fails after all attempts
+     * @throws \InvalidArgumentException If attempts is less than 1
      */
     public static function transaction(callable $callback, int $attempts = 1): PromiseInterface
     {
@@ -192,7 +209,7 @@ final class PgSQL
      *                                  - available: Number of available connections
      *                                  - inUse: Number of connections currently in use
      *
-     * @throws \RuntimeException If PgSQL has not been initialized
+     * @throws NotInitializedException If PgSQL has not been initialized
      */
     public static function getStats(): array
     {
@@ -204,7 +221,7 @@ final class PgSQL
      *
      * @return Connection|null The last connection or null if none used yet
      *
-     * @throws \RuntimeException If PgSQL has not been initialized
+     * @throws NotInitializedException If PgSQL has not been initialized
      */
     public static function getLastConnection(): ?Connection
     {
@@ -216,14 +233,14 @@ final class PgSQL
      *
      * @return PgSQLConnection The initialized connection instance
      *
-     * @throws \RuntimeException If PgSQL has not been initialized
+     * @throws NotInitializedException If PgSQL has not been initialized
      *
      * @internal This method is for internal use only
      */
-    private static function getInstance(): PgSQLConnection
+    public static function getInstance(): PgSQLConnection
     {
         if (!self::$isInitialized || self::$instance === null) {
-            throw new \RuntimeException(
+            throw new NotInitializedException(
                 'PgSQL has not been initialized. Please call PgSQL::init() at application startup.'
             );
         }
