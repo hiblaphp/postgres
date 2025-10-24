@@ -237,7 +237,7 @@ final class PgSQL
      *
      * @internal This method is for internal use only
      */
-    public static function getInstance(): PgSQLConnection
+    private static function getInstance(): PgSQLConnection
     {
         if (!self::$isInitialized || self::$instance === null) {
             throw new NotInitializedException(

@@ -719,7 +719,7 @@ final class PgSQLConnection
      *
      * @internal This method is for internal use only
      */
-    public function getPool(): PoolManager
+    private function getPool(): PoolManager
     {
         if (!$this->isInitialized || $this->pool === null) {
             throw new NotInitializedException(
