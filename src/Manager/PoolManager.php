@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Hibla\Postgres\Manager;
 
 use Hibla\Postgres\Exceptions\PoolException;
@@ -277,6 +279,7 @@ class PoolManager
         if (pg_connection_status($connection) !== PGSQL_CONNECTION_OK) {
             $error = pg_last_error($connection);
             pg_close($connection);
+
             throw new PoolException('PostgreSQL Connection failed: ' . $error);
         }
 

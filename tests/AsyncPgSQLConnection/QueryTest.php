@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Hibla\Postgres\AsyncPgSQLConnection;
 use Tests\Helpers\TestHelper;
 
@@ -26,7 +28,8 @@ describe('AsyncPgSQLConnection Query', function () {
             ->and($result)->toHaveCount(1)
             ->and($result[0]['name'])->toBe('John')
             ->and($result[0]['email'])->toBe('john@example.com')
-            ->and($result[0]['age'])->toBe('30');
+            ->and($result[0]['age'])->toBe('30')
+        ;
 
         $db->execute('DROP TABLE IF EXISTS users')->await();
     });
@@ -47,7 +50,8 @@ describe('AsyncPgSQLConnection Query', function () {
         $result = $db->query('SELECT * FROM users WHERE id = 999')->await();
 
         expect($result)->toBeArray()
-            ->and($result)->toHaveCount(0);
+            ->and($result)->toHaveCount(0)
+        ;
 
         $db->execute('DROP TABLE IF EXISTS users')->await();
     });
@@ -72,7 +76,8 @@ describe('AsyncPgSQLConnection Query', function () {
 
         expect($result)->toBeArray()
             ->and($result)->toHaveCount(1)
-            ->and($result[0]['name'])->toBe('Bob');
+            ->and($result[0]['name'])->toBe('Bob')
+        ;
 
         $db->execute('DROP TABLE IF EXISTS users')->await();
     });
@@ -100,7 +105,8 @@ describe('AsyncPgSQLConnection Query', function () {
 
         expect($result)->toBeArray()
             ->and($result)->toHaveCount(1)
-            ->and($result[0]['name'])->toBe('Charlie');
+            ->and($result[0]['name'])->toBe('Charlie')
+        ;
 
         $db->execute('DROP TABLE IF EXISTS users')->await();
     });
@@ -124,7 +130,8 @@ describe('AsyncPgSQLConnection Query', function () {
 
         expect($result)->toBeArray()
             ->and($result)->toHaveCount(1)
-            ->and($result[0]['age'])->toBeNull();
+            ->and($result[0]['age'])->toBeNull()
+        ;
 
         $db->execute('DROP TABLE IF EXISTS users')->await();
     });
@@ -133,13 +140,13 @@ describe('AsyncPgSQLConnection Query', function () {
         $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
 
         $exceptionThrown = false;
-        
+
         try {
             $db->query('INVALID SQL STATEMENT')->await();
-        } catch (\Hibla\Postgres\Exceptions\QueryException $e) {
+        } catch (Hibla\Postgres\Exceptions\QueryException $e) {
             $exceptionThrown = true;
         }
-        
+
         expect($exceptionThrown)->toBeTrue();
     });
 
@@ -162,7 +169,8 @@ describe('AsyncPgSQLConnection Query', function () {
         $result2 = $db->query('SELECT * FROM users WHERE name = $1', ['Frank'])->await();
 
         expect($result1[0]['count'])->toBe('1')
-            ->and($result2[0]['name'])->toBe('Frank');
+            ->and($result2[0]['name'])->toBe('Frank')
+        ;
 
         $db->execute('DROP TABLE IF EXISTS users')->await();
     });

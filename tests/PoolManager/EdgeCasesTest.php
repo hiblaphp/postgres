@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Hibla\Postgres\Manager\PoolManager;
 use PgSql\Connection;
 use Tests\Helpers\TestHelper;

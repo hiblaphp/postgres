@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Hibla\Postgres\Manager\PoolManager;
 
 describe('PoolManager Connection String Building', function () {
@@ -11,7 +13,7 @@ describe('PoolManager Connection String Building', function () {
         ];
 
         $pool = new PoolManager($config, 5);
-        
+
         expect($pool->getStats()['config_validated'])->toBeTrue();
 
         $pool->close();
@@ -29,7 +31,7 @@ describe('PoolManager Connection String Building', function () {
         ];
 
         $pool = new PoolManager($config, 5);
-        
+
         expect($pool->getStats()['config_validated'])->toBeTrue();
 
         $pool->close();

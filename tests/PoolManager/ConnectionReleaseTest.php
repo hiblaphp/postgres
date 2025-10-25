@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Hibla\Postgres\Manager\PoolManager;
 use PgSql\Connection;
 use Tests\Helpers\TestHelper;
@@ -94,7 +96,7 @@ describe('PoolManager Connection Release', function () {
         pg_query($connection, 'CREATE TEMP TABLE test_table (id SERIAL PRIMARY KEY)');
         pg_query($connection, 'BEGIN');
         pg_query($connection, 'INSERT INTO test_table DEFAULT VALUES');
-        
+
         expect(pg_transaction_status($connection))->not->toBe(PGSQL_TRANSACTION_IDLE);
 
         $pool->release($connection);

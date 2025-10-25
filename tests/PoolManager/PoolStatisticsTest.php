@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Hibla\Postgres\Manager\PoolManager;
 use Tests\Helpers\TestHelper;
 
@@ -61,7 +63,7 @@ describe('PoolManager Statistics', function () {
         foreach ($connections as $conn) {
             $pool->release($conn);
         }
-        
+
         foreach ($promises as $promise) {
             try {
                 $conn = $promise->await();
@@ -70,7 +72,7 @@ describe('PoolManager Statistics', function () {
                 // Expected if pool closes before fulfillment
             }
         }
-        
+
         $pool->close();
     });
 

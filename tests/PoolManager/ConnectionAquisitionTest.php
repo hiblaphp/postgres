@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Hibla\Postgres\Manager\PoolManager;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use PgSql\Connection;
@@ -132,7 +134,7 @@ describe('PoolManager Connection Acquisition', function () {
         expect($stats['waiting_requests'])->toBe(2);
 
         $pool->release($connection2);
-        
+
         // Handle the remaining waiting promises before closing
         foreach (array_slice($promises, 1) as $promise) {
             try {
@@ -142,7 +144,7 @@ describe('PoolManager Connection Acquisition', function () {
                 // Expected when pool closes
             }
         }
-        
+
         $pool->close();
     });
 
@@ -171,5 +173,5 @@ describe('PoolManager Connection Acquisition', function () {
         expect(function () use ($promise) {
             $promise->await();
         })->toThrow(RuntimeException::class);
-    })->skip('Skipping test to avoid DNS lookup warnings'); 
+    })->skip('Skipping test to avoid DNS lookup warnings');
 });

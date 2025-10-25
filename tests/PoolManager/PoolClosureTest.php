@@ -1,5 +1,7 @@
 <?php
 
+declare(strict_types=1);
+
 use Hibla\Postgres\Manager\PoolManager;
 use PgSql\Connection;
 use Tests\Helpers\TestHelper;
@@ -61,7 +63,7 @@ describe('PoolManager Closure', function () {
 
         $pool->release($connection);
         $pool->close();
-        
+
         expect($pool->getLastConnection())->toBeNull();
     });
 
@@ -106,7 +108,7 @@ describe('PoolManager Closure', function () {
         foreach ($connections as $conn) {
             $statuses[] = pg_connection_status($conn);
         }
-        
+
         foreach ($statuses as $status) {
             expect($status)->toBe(PGSQL_CONNECTION_OK);
         }
