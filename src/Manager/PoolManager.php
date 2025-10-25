@@ -263,19 +263,21 @@ class PoolManager
     {
         $connectionString = $this->buildConnectionString($this->dbConfig);
 
+        error_clear_last();
+
         $connection = @pg_connect($connectionString, PGSQL_CONNECT_FORCE_NEW);
 
         if ($connection === false) {
-            $error = pg_last_error();
+            $lastError = error_get_last();
+            $errorMessage = $lastError !== null ? $lastError['message'] : 'Unknown error';
 
-            throw new PoolException('PostgreSQL Connection failed: '.$error);
+            throw new PoolException('PostgreSQL Connection failed: ' . $errorMessage);
         }
 
         if (pg_connection_status($connection) !== PGSQL_CONNECTION_OK) {
             $error = pg_last_error($connection);
             pg_close($connection);
-
-            throw new PoolException('PostgreSQL Connection failed: '.$error);
+            throw new PoolException('PostgreSQL Connection failed: ' . $error);
         }
 
         return $connection;
@@ -300,22 +302,22 @@ class PoolManager
         }
 
         $parts = [
-            'host='.$config['host'],
-            'user='.$config['username'],
-            'dbname='.$config['database'],
+            'host=' . $config['host'],
+            'user=' . $config['username'],
+            'dbname=' . $config['database'],
         ];
 
         if (isset($config['password']) && is_string($config['password'])) {
-            $parts[] = 'password='.$config['password'];
+            $parts[] = 'password=' . $config['password'];
         }
         if (isset($config['port']) && is_int($config['port'])) {
-            $parts[] = 'port='.$config['port'];
+            $parts[] = 'port=' . $config['port'];
         }
         if (isset($config['sslmode']) && is_string($config['sslmode'])) {
-            $parts[] = 'sslmode='.$config['sslmode'];
+            $parts[] = 'sslmode=' . $config['sslmode'];
         }
         if (isset($config['connect_timeout']) && is_int($config['connect_timeout'])) {
-            $parts[] = 'connect_timeout='.$config['connect_timeout'];
+            $parts[] = 'connect_timeout=' . $config['connect_timeout'];
         }
 
         return implode(' ', $parts);
@@ -348,7 +350,7 @@ class PoolManager
     {
         try {
             if (pg_transaction_status($connection) !== PGSQL_TRANSACTION_IDLE) {
-                pg_query($connection, 'ROLLBACK');
+                @pg_query($connection, 'ROLLBACK');
             }
         } catch (Throwable $e) {
             // If reset fails, isConnectionAlive() will catch it on the next cycle.
