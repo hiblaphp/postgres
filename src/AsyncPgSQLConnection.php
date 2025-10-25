@@ -527,6 +527,21 @@ final class AsyncPgSQLConnection
                 $params
             );
         }
+        
+        $resultStatus = pg_result_status($result, PGSQL_STATUS_LONG);
+        if (
+            $resultStatus === PGSQL_BAD_RESPONSE ||
+            $resultStatus === PGSQL_NONFATAL_ERROR ||
+            $resultStatus === PGSQL_FATAL_ERROR
+        ) {
+            $error = pg_result_error($result);
+
+            throw new QueryException(
+                'Query execution failed: ' . ($error !== '' ? $error : 'Unknown error'),
+                $sql,
+                $params
+            );
+        }
 
         return match ($resultType) {
             'fetchAll' => $this->handleFetchAll($result),
