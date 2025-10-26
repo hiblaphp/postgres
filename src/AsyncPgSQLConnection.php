@@ -46,12 +46,13 @@ final class AsyncPgSQLConnection
      * independent from other instances, allowing true multi-database support.
      *
      * @param  array<string, mixed>  $dbConfig  Database configuration array containing:
-     *                                          - host: Database host (e.g., 'localhost')
-     *                                          - port: Database port (default: 5432)
-     *                                          - dbname: Database name
-     *                                          - user: Database username
-     *                                          - password: Database password
-     *                                          - options: Additional connection options (optional)
+     *                                          - host: Database host (required, e.g., 'localhost')
+     *                                          - username: Database username (required)
+     *                                          - database: Database name (required)
+     *                                          - password: Database password (optional)
+     *                                          - port: Database port (optional, must be positive integer)
+     *                                          - sslmode: SSL mode (optional, one of: 'disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full')
+     *                                          - connect_timeout: Connection timeout in seconds (optional, must be positive integer)
      * @param  int  $poolSize  Maximum number of connections in the pool
      *
      * @throws ConfigurationException If configuration is invalid
@@ -529,7 +530,7 @@ final class AsyncPgSQLConnection
                 $params
             );
         }
-        
+
         $resultStatus = pg_result_status($result, PGSQL_STATUS_LONG);
         if (
             $resultStatus === PGSQL_BAD_RESPONSE ||

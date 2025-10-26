@@ -32,15 +32,16 @@ final class PG
      * Initializes the async PostgreSQL database system.
      *
      * This is the single point of configuration and must be called before
-     * using any other PgSQL methods. Multiple calls are ignored.
+     * any other PG methods. Multiple calls are ignored.
      *
      * @param  array<string, mixed>  $dbConfig  Database configuration array containing:
-     *                                          - host: Database host (e.g., 'localhost')
-     *                                          - port: Database port (default: 5432)
-     *                                          - dbname: Database name
-     *                                          - user: Database username
-     *                                          - password: Database password
-     *                                          - options: Additional connection options (optional)
+     *                                          - host: Database host (required, e.g., 'localhost')
+     *                                          - username: Database username (required)
+     *                                          - database: Database name (required)
+     *                                          - password: Database password (optional)
+     *                                          - port: Database port (optional, must be positive integer)
+     *                                          - sslmode: SSL mode (optional, one of: 'disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full')
+     *                                          - connect_timeout: Connection timeout in seconds (optional, must be positive integer)
      * @param  int  $poolSize  Maximum number of connections in the pool
      * @return void
      *
