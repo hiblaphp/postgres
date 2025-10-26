@@ -424,6 +424,7 @@ final class AsyncPgSQLConnection
      *
      * This method handles the complete lifecycle of query execution including
      * connection acquisition, query sending, result waiting, and connection release.
+     * Automatically converts ? placeholders to PostgreSQL $n format if needed.
      *
      * @param  string  $sql  SQL query/statement
      * @param  array<int, mixed>  $params  Query parameters
@@ -441,33 +442,76 @@ final class AsyncPgSQLConnection
             $connection = await($this->getPool()->get());
 
             try {
-                if (count($params) > 0) {
-                    $sendResult = @pg_send_query_params($connection, $sql, $params);
+                $convertedSql = $this->convertPlaceholders($sql);
+
+                $indexedParams = array_values($params);
+
+                if (count($indexedParams) > 0) {
+                    $sendResult = @pg_send_query_params($connection, $convertedSql, $indexedParams);
                     if ($sendResult === false) {
                         throw new QueryException(
                             'Failed to send parameterized query: ' . pg_last_error($connection),
-                            $sql,
-                            $params
+                            $convertedSql,
+                            $indexedParams
                         );
                     }
                 } else {
-                    $sendResult = @pg_send_query($connection, $sql);
+                    $sendResult = @pg_send_query($connection, $convertedSql);
                     if ($sendResult === false) {
                         throw new QueryException(
                             'Failed to send query: ' . pg_last_error($connection),
-                            $sql,
-                            $params
+                            $convertedSql,
+                            $indexedParams
                         );
                     }
                 }
 
                 $result = await($this->waitForAsyncCompletion($connection));
 
-                return $this->processResult($result, $resultType, $connection, $sql, $params);
+                return $this->processResult($result, $resultType, $connection, $convertedSql, $indexedParams);
             } finally {
                 $this->getPool()->release($connection);
             }
         });
+    }
+
+    /**
+     * Converts ? placeholders to PostgreSQL $1, $2, $3 format.
+     * If the SQL already uses $n placeholders, it is returned unchanged.
+     *
+     * @param  string  $sql  SQL with ? placeholders or $n placeholders
+     * @return string SQL with $n placeholders
+     *
+     * @throws QueryException If mixing ? and $n placeholders
+     *
+     * @internal This method is for internal use only
+     */
+    private function convertPlaceholders(string $sql): string
+    {
+        $hasDollarPlaceholders = preg_match('/\$\d+/', $sql) === 1;
+        $hasQuestionPlaceholders = str_contains($sql, '?');
+
+        if ($hasDollarPlaceholders && $hasQuestionPlaceholders) {
+            throw new QueryException(
+                'Cannot mix ? and $n placeholder formats in the same query',
+                $sql,
+                []
+            );
+        }
+
+        if ($hasDollarPlaceholders || !$hasQuestionPlaceholders) {
+            return $sql;
+        }
+
+        $count = 0;
+        return (string) preg_replace_callback(
+            '/\?/',
+            function () use (&$count): string {
+                $count++;
+                return '$' . $count;
+            },
+            $sql
+        );
     }
 
     /**
