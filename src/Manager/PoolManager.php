@@ -58,9 +58,18 @@ class PoolManager
     private bool $configValidated = false;
 
     /**
+     * @var bool Whether to use persistent connections (pg_pconnect).
+     */
+    private bool $persistent = false;
+
+    /** @var int Counter for generating unique connection identifiers */
+    private int $connectionIdCounter = 0;
+
+    /**
      * Creates a new PostgreSQL connection pool.
      *
      * @param  array<string, mixed>  $dbConfig  The database connection parameters (host, user, dbname, etc.).
+     *                                          Can include 'persistent' => true to enable persistent connections.
      * @param  int  $maxSize  The maximum number of connections this pool can manage.
      *
      * @throws InvalidArgumentException If the database configuration is invalid.
@@ -69,6 +78,10 @@ class PoolManager
     {
         $this->validateDbConfig($dbConfig);
         $this->configValidated = true;
+
+        $this->persistent = (bool) ($dbConfig['persistent'] ?? false);
+        unset($dbConfig['persistent']);
+
         $this->dbConfig = $dbConfig;
         $this->maxSize = $maxSize;
         $this->pool = new SplQueue();
@@ -194,6 +207,7 @@ class PoolManager
             'waiting_requests' => $this->waiters->count(),
             'max_size' => $this->maxSize,
             'config_validated' => $this->configValidated,
+            'persistent' => $this->persistent,
         ];
     }
 
@@ -202,6 +216,9 @@ class PoolManager
      *
      * This method closes all idle connections and rejects any pending connection requests.
      * The pool is reset to an empty state and cannot be used until re-initialized.
+     * 
+     * Note: Persistent connections are not actually closed by pg_close() but are
+     * returned to the PHP persistent connection pool for reuse across requests.
      */
     public function close(): void
     {
@@ -220,6 +237,16 @@ class PoolManager
         $this->waiters = new SplQueue();
         $this->activeConnections = 0;
         $this->lastConnection = null;
+    }
+
+    /**
+     * Checks if persistent connections are enabled.
+     *
+     * @return bool True if using persistent connections.
+     */
+    public function isPersistent(): bool
+    {
+        return $this->persistent;
     }
 
     /**
@@ -252,10 +279,17 @@ class PoolManager
         if (isset($dbConfig['sslmode']) && ! in_array($dbConfig['sslmode'], ['disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full'], true)) {
             throw new InvalidArgumentException('Invalid sslmode value');
         }
+        if (isset($dbConfig['persistent']) && ! is_bool($dbConfig['persistent'])) {
+            throw new InvalidArgumentException('Persistent option must be a boolean');
+        }
     }
 
     /**
      * Establishes a new PostgreSQL connection.
+     *
+     * For persistent connections, uses a unique application_name to ensure
+     * each pooled connection is distinct and not reused by PHP's persistent
+     * connection mechanism.
      *
      * @return Connection The newly created connection resource.
      *
@@ -263,17 +297,34 @@ class PoolManager
      */
     private function createConnection(): Connection
     {
-        $connectionString = $this->buildConnectionString($this->dbConfig);
+        $config = $this->dbConfig;
+
+        if ($this->persistent) {
+            $counterId = $this->connectionIdCounter;
+            $this->connectionIdCounter++;
+            $uniqueId = spl_object_id($this) . '_' . $counterId;
+
+            $appName = $config['application_name'] ?? 'php_app';
+            assert(is_string($appName));
+            $config['application_name'] = $appName . '_' . $uniqueId;
+        }
+
+        $connectionString = $this->buildConnectionString($config);
 
         error_clear_last();
 
-        $connection = @pg_connect($connectionString, PGSQL_CONNECT_FORCE_NEW);
+        if ($this->persistent) {
+            $connection = @pg_pconnect($connectionString);
+        } else {
+            $connection = @pg_connect($connectionString, PGSQL_CONNECT_FORCE_NEW);
+        }
 
         if ($connection === false) {
             $lastError = error_get_last();
             $errorMessage = $lastError !== null ? $lastError['message'] : 'Unknown error';
+            $connectionType = $this->persistent ? 'persistent' : 'regular';
 
-            throw new PoolException('PostgreSQL Connection failed: ' . $errorMessage);
+            throw new PoolException("PostgreSQL {$connectionType} connection failed: " . $errorMessage);
         }
 
         if (pg_connection_status($connection) !== PGSQL_CONNECTION_OK) {
@@ -321,6 +372,10 @@ class PoolManager
         }
         if (isset($config['connect_timeout']) && is_int($config['connect_timeout'])) {
             $parts[] = 'connect_timeout=' . $config['connect_timeout'];
+        }
+
+        if (isset($config['application_name']) && is_string($config['application_name'])) {
+            $parts[] = 'application_name=' . $config['application_name'];
         }
 
         return implode(' ', $parts);

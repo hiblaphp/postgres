@@ -4,19 +4,17 @@ declare(strict_types=1);
 
 namespace Hibla\Postgres;
 
-use Hibla\Async\Timer;
 use Hibla\Postgres\Exceptions\ConfigurationException;
 use Hibla\Postgres\Exceptions\NotInitializedException;
 use Hibla\Postgres\Exceptions\NotInTransactionException;
-use Hibla\Postgres\Exceptions\QueryException;
 use Hibla\Postgres\Exceptions\TransactionException;
 use Hibla\Postgres\Exceptions\TransactionFailedException;
+use Hibla\Postgres\Exceptions\QueryException;
+use Hibla\Postgres\Manager\TransactionManager;
+use Hibla\Postgres\Utilities\QueryExecutor;
 use Hibla\Postgres\Manager\PoolManager;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use PgSql\Connection;
-use PgSql\Result;
-use Throwable;
-use WeakMap;
 
 use function Hibla\async;
 use function Hibla\await;
@@ -36,8 +34,11 @@ final class AsyncPgSQLConnection
     /** @var bool Tracks initialization state of this instance */
     private bool $isInitialized = false;
 
-    /** @var WeakMap<Connection, array{commit: list<callable(): void>, rollback: list<callable(): void>, fiber: \Fiber<mixed, mixed, mixed, mixed>|null}>|null Transaction callbacks using WeakMap */
-    private ?WeakMap $transactionCallbacks = null;
+    /** @var QueryExecutor|null Handles query execution and result processing */
+    private ?QueryExecutor $queryExecutor = null;
+
+    /** @var TransactionManager|null Manages transactions and callbacks */
+    private ?TransactionManager $transactionManager = null;
 
     /**
      * Creates a new independent PgSQLConnection instance.
@@ -53,6 +54,7 @@ final class AsyncPgSQLConnection
      *                                          - port: Database port (optional, must be positive integer)
      *                                          - sslmode: SSL mode (optional, one of: 'disable', 'allow', 'prefer', 'require', 'verify-ca', 'verify-full')
      *                                          - connect_timeout: Connection timeout in seconds (optional, must be positive integer)
+     *                                          - persistent: Whether to use persistent connections (optional, boolean)
      * @param  int  $poolSize  Maximum number of connections in the pool
      *
      * @throws ConfigurationException If configuration is invalid
@@ -61,7 +63,8 @@ final class AsyncPgSQLConnection
     {
         try {
             $this->pool = new PoolManager($dbConfig, $poolSize);
-            $this->transactionCallbacks = new WeakMap();
+            $this->queryExecutor = new QueryExecutor();
+            $this->transactionManager = new TransactionManager();
             $this->isInitialized = true;
         } catch (\InvalidArgumentException $e) {
             throw new ConfigurationException(
@@ -85,7 +88,8 @@ final class AsyncPgSQLConnection
         }
         $this->pool = null;
         $this->isInitialized = false;
-        $this->transactionCallbacks = null;
+        $this->queryExecutor = null;
+        $this->transactionManager = null;
     }
 
     /**
@@ -103,29 +107,7 @@ final class AsyncPgSQLConnection
      */
     public function onCommit(callable $callback): void
     {
-        $connection = $this->getCurrentTransactionConnection();
-
-        if ($connection === null) {
-            throw new NotInTransactionException(
-                'onCommit() can only be called within a transaction.'
-            );
-        }
-
-        $this->ensureTransactionCallbacksInitialized();
-
-        if (! isset($this->transactionCallbacks[$connection])) {
-            throw new TransactionException('Transaction state not found.');
-        }
-
-        $transactionData = $this->transactionCallbacks[$connection];
-        $commitCallbacks = $transactionData['commit'];
-        $commitCallbacks[] = $callback;
-
-        $this->transactionCallbacks[$connection] = [
-            'commit' => $commitCallbacks,
-            'rollback' => $transactionData['rollback'],
-            'fiber' => $transactionData['fiber'],
-        ];
+        $this->getTransactionManager()->onCommit($callback);
     }
 
     /**
@@ -143,29 +125,7 @@ final class AsyncPgSQLConnection
      */
     public function onRollback(callable $callback): void
     {
-        $connection = $this->getCurrentTransactionConnection();
-
-        if ($connection === null) {
-            throw new NotInTransactionException(
-                'onRollback() can only be called within a transaction.'
-            );
-        }
-
-        $this->ensureTransactionCallbacksInitialized();
-
-        if (! isset($this->transactionCallbacks[$connection])) {
-            throw new TransactionException('Transaction state not found.');
-        }
-
-        $transactionData = $this->transactionCallbacks[$connection];
-        $rollbackCallbacks = $transactionData['rollback'];
-        $rollbackCallbacks[] = $callback;
-
-        $this->transactionCallbacks[$connection] = [
-            'commit' => $transactionData['commit'],
-            'rollback' => $rollbackCallbacks,
-            'fiber' => $transactionData['fiber'],
-        ];
+        $this->getTransactionManager()->onRollback($callback);
     }
 
     /**
@@ -296,93 +256,12 @@ final class AsyncPgSQLConnection
      */
     public function transaction(callable $callback, int $attempts = 1): PromiseInterface
     {
-        return async(function () use ($callback, $attempts) {
-            if ($attempts < 1) {
-                throw new \InvalidArgumentException('Transaction attempts must be at least 1.');
-            }
-
-            /** @var Throwable|null $lastException */
-            $lastException = null;
-
-            for ($currentAttempt = 1; $currentAttempt <= $attempts; $currentAttempt++) {
-                try {
-                    return await($this->run(function (Connection $connection) use ($callback) {
-                        $currentFiber = \Fiber::getCurrent();
-
-                        $this->ensureTransactionCallbacksInitialized();
-
-                        /** @var array{commit: list<callable(): void>, rollback: list<callable(): void>, fiber: \Fiber<mixed, mixed, mixed, mixed>|null} $initialState */
-                        $initialState = [
-                            'commit' => [],
-                            'rollback' => [],
-                            'fiber' => $currentFiber,
-                        ];
-
-                        if ($this->transactionCallbacks !== null) {
-                            $this->transactionCallbacks[$connection] = $initialState;
-                        }
-
-                        $beginResult = @pg_query($connection, 'BEGIN');
-                        if ($beginResult === false) {
-                            throw new TransactionException(
-                                'Failed to begin transaction: ' . pg_last_error($connection)
-                            );
-                        }
-
-                        try {
-                            $result = $callback($connection);
-
-                            $commitResult = @pg_query($connection, 'COMMIT');
-                            if ($commitResult === false) {
-                                throw new TransactionException(
-                                    'Failed to commit transaction: ' . pg_last_error($connection)
-                                );
-                            }
-
-                            $this->executeCallbacks($connection, 'commit');
-
-                            return $result;
-                        } catch (Throwable $e) {
-                            @pg_query($connection, 'ROLLBACK');
-
-                            $this->executeCallbacks($connection, 'rollback');
-
-                            throw $e;
-                        } finally {
-                            if ($this->transactionCallbacks !== null && isset($this->transactionCallbacks[$connection])) {
-                                unset($this->transactionCallbacks[$connection]);
-                            }
-                        }
-                    }));
-                } catch (Throwable $e) {
-                    $lastException = $e;
-
-                    if ($currentAttempt < $attempts) {
-                        continue;
-                    }
-
-                    throw new TransactionFailedException(
-                        sprintf(
-                            'Transaction failed after %d attempt(s): %s',
-                            $attempts,
-                            $e->getMessage()
-                        ),
-                        $attempts,
-                        $e
-                    );
-                }
-            }
-
-            if ($lastException !== null) {
-                throw new TransactionFailedException(
-                    sprintf('Transaction failed after %d attempt(s)', $attempts),
-                    $attempts,
-                    $lastException
-                );
-            }
-
-            throw new TransactionException('Transaction failed without exception.');
-        });
+        return $this->getTransactionManager()->executeTransaction(
+            fn() => $this->getPool()->get(),
+            fn($connection) => $this->getPool()->release($connection),
+            $callback,
+            $attempts
+        );
     }
 
     /**
@@ -392,9 +271,12 @@ final class AsyncPgSQLConnection
      * including total connections, available connections, and connections in use.
      *
      * @return array<string, int|bool> Pool statistics including:
-     *                                  - total: Total number of connections in pool
-     *                                  - available: Number of available connections
-     *                                  - inUse: Number of connections currently in use
+     *                                  - active_connections: Total number of connections created
+     *                                  - pooled_connections: Number of available connections
+     *                                  - waiting_requests: Number of requests waiting for a connection
+     *                                  - max_size: Maximum pool size
+     *                                  - config_validated: Whether config was validated
+     *                                  - persistent: Whether using persistent connections
      *
      * @throws NotInitializedException If this instance is not initialized
      */
@@ -423,8 +305,7 @@ final class AsyncPgSQLConnection
      * Executes an async query with the specified result processing type.
      *
      * This method handles the complete lifecycle of query execution including
-     * connection acquisition, query sending, result waiting, and connection release.
-     * Automatically converts ? placeholders to PostgreSQL $n format if needed.
+     * connection acquisition, query execution, and connection release.
      *
      * @param  string  $sql  SQL query/statement
      * @param  array<int, mixed>  $params  Query parameters
@@ -433,8 +314,6 @@ final class AsyncPgSQLConnection
      *
      * @throws NotInitializedException If this instance is not initialized
      * @throws QueryException If query execution fails
-     *
-     * @internal This method is for internal use only
      */
     private function executeAsyncQuery(string $sql, array $params, string $resultType): PromiseInterface
     {
@@ -442,336 +321,16 @@ final class AsyncPgSQLConnection
             $connection = await($this->getPool()->get());
 
             try {
-                $convertedSql = $this->convertPlaceholders($sql);
-
-                $indexedParams = array_values($params);
-
-                if (count($indexedParams) > 0) {
-                    $sendResult = @pg_send_query_params($connection, $convertedSql, $indexedParams);
-                    if ($sendResult === false) {
-                        throw new QueryException(
-                            'Failed to send parameterized query: ' . pg_last_error($connection),
-                            $convertedSql,
-                            $indexedParams
-                        );
-                    }
-                } else {
-                    $sendResult = @pg_send_query($connection, $convertedSql);
-                    if ($sendResult === false) {
-                        throw new QueryException(
-                            'Failed to send query: ' . pg_last_error($connection),
-                            $convertedSql,
-                            $indexedParams
-                        );
-                    }
-                }
-
-                $result = await($this->waitForAsyncCompletion($connection));
-
-                return $this->processResult($result, $resultType, $connection, $convertedSql, $indexedParams);
+                return await($this->getQueryExecutor()->executeQuery(
+                    $connection,
+                    $sql,
+                    $params,
+                    $resultType
+                ));
             } finally {
                 $this->getPool()->release($connection);
             }
         });
-    }
-
-    /**
-     * Converts ? placeholders to PostgreSQL $1, $2, $3 format.
-     * If the SQL already uses $n placeholders, it is returned unchanged.
-     *
-     * @param  string  $sql  SQL with ? placeholders or $n placeholders
-     * @return string SQL with $n placeholders
-     *
-     * @throws QueryException If mixing ? and $n placeholders
-     *
-     * @internal This method is for internal use only
-     */
-    private function convertPlaceholders(string $sql): string
-    {
-        $hasDollarPlaceholders = preg_match('/\$\d+/', $sql) === 1;
-        $hasQuestionPlaceholders = str_contains($sql, '?');
-
-        if ($hasDollarPlaceholders && $hasQuestionPlaceholders) {
-            throw new QueryException(
-                'Cannot mix ? and $n placeholder formats in the same query',
-                $sql,
-                []
-            );
-        }
-
-        if ($hasDollarPlaceholders || !$hasQuestionPlaceholders) {
-            return $sql;
-        }
-
-        $count = 0;
-        return (string) preg_replace_callback(
-            '/\?/',
-            function () use (&$count): string {
-                $count++;
-                return '$' . $count;
-            },
-            $sql
-        );
-    }
-
-    /**
-     * Waits for an async query to complete using non-blocking polling.
-     *
-     * This method polls the connection status at increasing intervals
-     * (exponential backoff) until the query completes. This provides
-     * efficient non-blocking behavior without busy-waiting.
-     *
-     * @param  Connection  $connection  PostgreSQL connection
-     * @return PromiseInterface<Result|false> Promise resolving to query result
-     *
-     * @internal This method is for internal use only
-     */
-    private function waitForAsyncCompletion(Connection $connection): PromiseInterface
-    {
-        return async(function () use ($connection) {
-            $pollInterval = 100; // microseconds
-            $maxInterval = 1000;
-
-            while (pg_connection_busy($connection)) {
-                await(Timer::delay($pollInterval / 1000000));
-                $pollInterval = (int) min($pollInterval * 1.2, $maxInterval);
-            }
-
-            return pg_get_result($connection);
-        });
-    }
-
-    /**
-     * Processes a query result based on the specified result type.
-     *
-     * This method converts the raw PostgreSQL result into the appropriate
-     * PHP data structure based on the requested result type.
-     *
-     * @param  Result|false  $result  PostgreSQL query result
-     * @param  string  $resultType  Type of result processing
-     * @param  Connection  $connection  PostgreSQL connection for error reporting
-     * @param  string  $sql  The SQL query for error context
-     * @param  array<int, mixed>  $params  The query parameters for error context
-     * @return mixed Processed result based on result type
-     *
-     * @throws QueryException If result is false or processing fails
-     *
-     * @internal This method is for internal use only
-     */
-    private function processResult(
-        Result|false $result,
-        string $resultType,
-        Connection $connection,
-        string $sql,
-        array $params
-    ): mixed {
-        if ($result === false) {
-            $error = pg_last_error($connection);
-
-            throw new QueryException(
-                'Query execution failed: ' . ($error !== '' ? $error : 'Unknown error'),
-                $sql,
-                $params
-            );
-        }
-
-        $resultStatus = pg_result_status($result, PGSQL_STATUS_LONG);
-        if (
-            $resultStatus === PGSQL_BAD_RESPONSE ||
-            $resultStatus === PGSQL_NONFATAL_ERROR ||
-            $resultStatus === PGSQL_FATAL_ERROR
-        ) {
-            $error = pg_result_error($result);
-
-            throw new QueryException(
-                'Query execution failed: ' . ($error !== '' ? $error : 'Unknown error'),
-                $sql,
-                $params
-            );
-        }
-
-        return match ($resultType) {
-            'fetchAll' => $this->handleFetchAll($result),
-            'fetchOne' => $this->handleFetchOne($result),
-            'fetchValue' => $this->handleFetchValue($result),
-            'execute' => $this->handleExecute($result),
-            default => $result,
-        };
-    }
-
-    /**
-     * Fetches all rows from a query result.
-     *
-     * Converts the PostgreSQL result into an array of associative arrays,
-     * where each array represents a row with column names as keys.
-     *
-     * @param  Result  $result  PostgreSQL query result
-     * @return array<int, array<string, mixed>> Array of associative arrays
-     *
-     * @internal This method is for internal use only
-     */
-    private function handleFetchAll(Result $result): array
-    {
-        $rows = pg_fetch_all($result);
-
-        /** @var array<int, array<string, mixed>> $rows */
-        return $rows;
-    }
-
-    /**
-     * Fetches the first row from a query result.
-     *
-     * Converts the first row of the PostgreSQL result into an associative array
-     * with column names as keys. Returns null if no rows exist.
-     *
-     * @param  Result  $result  PostgreSQL query result
-     * @return array<int|string, string|null> Associative array or null if no rows
-     *
-     * @internal This method is for internal use only
-     */
-    private function handleFetchOne(Result $result): ?array
-    {
-        $row = pg_fetch_assoc($result);
-
-        if ($row === false) {
-            return null;
-        }
-
-        return $row;
-    }
-
-    /**
-     * Fetches a single column value from the first row.
-     *
-     * Extracts the first column of the first row from the result set.
-     * Useful for aggregate queries like COUNT, SUM, MAX, etc.
-     *
-     * @param  Result  $result  PostgreSQL query result
-     * @return mixed Scalar value or null if no rows
-     *
-     * @internal This method is for internal use only
-     */
-    private function handleFetchValue(Result $result): mixed
-    {
-        $row = pg_fetch_row($result);
-
-        if ($row === false) {
-            return null;
-        }
-
-        return $row[0];
-    }
-
-    /**
-     * Gets the number of affected rows from a query result.
-     *
-     * Returns the count of rows affected by an INSERT, UPDATE, or DELETE statement.
-     *
-     * @param  Result  $result  PostgreSQL query result
-     * @return int Number of affected rows
-     *
-     * @internal This method is for internal use only
-     */
-    private function handleExecute(Result $result): int
-    {
-        return pg_affected_rows($result);
-    }
-
-    /**
-     * Gets the current transaction's Connection instance if in a transaction within the current fiber.
-     *
-     * This method checks if the current fiber is executing within a transaction context
-     * and returns the associated connection if found.
-     *
-     * @return Connection|null Connection instance or null if not in transaction
-     *
-     * @internal This method is for internal use only
-     */
-    private function getCurrentTransactionConnection(): ?Connection
-    {
-        if ($this->transactionCallbacks === null) {
-            return null;
-        }
-
-        $currentFiber = \Fiber::getCurrent();
-
-        foreach ($this->transactionCallbacks as $connection => $data) {
-            if ($data['fiber'] === $currentFiber) {
-                return $connection;
-            }
-        }
-
-        return null;
-    }
-
-    /**
-     * Executes registered callbacks for commit or rollback.
-     *
-     * Runs all callbacks registered for the specified transaction event.
-     * If any callback throws an exception, execution stops and the first
-     * exception is re-thrown after all callbacks have been attempted.
-     *
-     * @param  Connection  $connection  PostgreSQL connection
-     * @param  string  $type  'commit' or 'rollback'
-     * @return void
-     *
-     * @throws TransactionException If any callback throws an exception
-     *
-     * @internal This method is for internal use only
-     */
-    private function executeCallbacks(Connection $connection, string $type): void
-    {
-        if ($this->transactionCallbacks === null || ! isset($this->transactionCallbacks[$connection])) {
-            return;
-        }
-
-        $transactionData = $this->transactionCallbacks[$connection];
-
-        if ($type !== 'commit' && $type !== 'rollback') {
-            return;
-        }
-
-        $callbacks = $transactionData[$type];
-
-        /** @var list<Throwable> $exceptions */
-        $exceptions = [];
-
-        foreach ($callbacks as $callback) {
-            try {
-                $callback();
-            } catch (Throwable $e) {
-                $exceptions[] = $e;
-            }
-        }
-
-        if (count($exceptions) > 0) {
-            throw new TransactionException(
-                sprintf(
-                    'Transaction %s callback failed: %s',
-                    $type,
-                    $exceptions[0]->getMessage()
-                ),
-                0,
-                $exceptions[0]
-            );
-        }
-    }
-
-    /**
-     * Ensures the transaction callbacks WeakMap is initialized.
-     *
-     * This is a safety check to ensure the WeakMap exists before use.
-     * In normal operation, it should always be initialized in the constructor.
-     *
-     * @return void
-     *
-     * @internal This method is for internal use only
-     */
-    private function ensureTransactionCallbacksInitialized(): void
-    {
-        if ($this->transactionCallbacks === null) {
-            $this->transactionCallbacks = new WeakMap();
-        }
     }
 
     /**
@@ -780,17 +339,51 @@ final class AsyncPgSQLConnection
      * @return PoolManager The initialized connection pool
      *
      * @throws NotInitializedException If this instance is not initialized
-     *
-     * @internal This method is for internal use only
      */
     private function getPool(): PoolManager
     {
-        if (! $this->isInitialized || $this->pool === null) {
+        if (!$this->isInitialized || $this->pool === null) {
             throw new NotInitializedException(
                 'PgSQLConnection instance has not been initialized or has been reset.'
             );
         }
 
         return $this->pool;
+    }
+
+    /**
+     * Gets the query executor instance.
+     *
+     * @return QueryExecutor The initialized query executor
+     *
+     * @throws NotInitializedException If this instance is not initialized
+     */
+    private function getQueryExecutor(): QueryExecutor
+    {
+        if ($this->queryExecutor === null) {
+            throw new NotInitializedException(
+                'PgSQLConnection instance has not been initialized or has been reset.'
+            );
+        }
+
+        return $this->queryExecutor;
+    }
+
+    /**
+     * Gets the transaction manager instance.
+     *
+     * @return TransactionManager The initialized transaction manager
+     *
+     * @throws NotInitializedException If this instance is not initialized
+     */
+    private function getTransactionManager(): TransactionManager
+    {
+        if ($this->transactionManager === null) {
+            throw new NotInitializedException(
+                'PgSQLConnection instance has not been initialized or has been reset.'
+            );
+        }
+
+        return $this->transactionManager;
     }
 }
