@@ -4,20 +4,23 @@ declare(strict_types=1);
 
 namespace Hibla\Postgres;
 
+use function Hibla\async;
+use function Hibla\await;
+
+use Hibla\Postgres\Enums\IsolationLevel;
 use Hibla\Postgres\Exceptions\ConfigurationException;
 use Hibla\Postgres\Exceptions\NotInitializedException;
 use Hibla\Postgres\Exceptions\NotInTransactionException;
+use Hibla\Postgres\Exceptions\QueryException;
 use Hibla\Postgres\Exceptions\TransactionException;
 use Hibla\Postgres\Exceptions\TransactionFailedException;
-use Hibla\Postgres\Exceptions\QueryException;
+use Hibla\Postgres\Manager\PoolManager;
 use Hibla\Postgres\Manager\TransactionManager;
 use Hibla\Postgres\Utilities\QueryExecutor;
-use Hibla\Postgres\Manager\PoolManager;
+use Hibla\Postgres\Utilities\Transaction;
+
 use Hibla\Promise\Interfaces\PromiseInterface;
 use PgSql\Connection;
-
-use function Hibla\async;
-use function Hibla\await;
 
 /**
  * Instance-based Asynchronous PostgreSQL API for independent database connections.
@@ -238,29 +241,36 @@ final class AsyncPgSQLConnection
     /**
      * Executes multiple operations within a database transaction.
      *
-     * Automatically handles transaction begin/commit/rollback. If the callback
-     * throws an exception, the transaction is rolled back and retried based on
-     * the specified number of attempts. All retry attempts are made with exponential
+     * Automatically handles transaction begin/commit/rollback. The callback receives
+     * a Transaction object for executing queries within the transaction context.
+     * If the callback throws an exception, the transaction is rolled back and retried
+     * based on the specified number of attempts. All retry attempts are made with exponential
      * backoff between attempts.
      *
      * Registered onCommit() callbacks are executed after successful commit.
      * Registered onRollback() callbacks are executed after rollback.
      *
-     * @param  callable(Connection): mixed  $callback  Transaction callback receiving Connection instance
+     * @param  callable(Transaction): mixed  $callback  Transaction callback receiving Transaction object
      * @param  int  $attempts  Number of times to attempt the transaction (default: 1)
+     * @param  IsolationLevel|null  $isolationLevel  Transaction isolation level (optional)
      * @return PromiseInterface<mixed> Promise resolving to callback's return value
      *
      * @throws NotInitializedException If this instance is not initialized
      * @throws TransactionFailedException If transaction fails after all attempts
      * @throws \InvalidArgumentException If attempts is less than 1
      */
-    public function transaction(callable $callback, int $attempts = 1): PromiseInterface
-    {
+    public function transaction(
+        callable $callback,
+        int $attempts = 1,
+        ?IsolationLevel $isolationLevel = null
+    ): PromiseInterface {
         return $this->getTransactionManager()->executeTransaction(
-            fn() => $this->getPool()->get(),
-            fn($connection) => $this->getPool()->release($connection),
+            fn () => $this->getPool()->get(),
+            fn ($connection) => $this->getPool()->release($connection),
             $callback,
-            $attempts
+            $this->getQueryExecutor(),
+            $attempts,
+            $isolationLevel
         );
     }
 
@@ -342,7 +352,7 @@ final class AsyncPgSQLConnection
      */
     private function getPool(): PoolManager
     {
-        if (!$this->isInitialized || $this->pool === null) {
+        if (! $this->isInitialized || $this->pool === null) {
             throw new NotInitializedException(
                 'PgSQLConnection instance has not been initialized or has been reset.'
             );

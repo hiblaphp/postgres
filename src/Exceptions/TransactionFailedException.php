@@ -4,37 +4,52 @@ declare(strict_types=1);
 
 namespace Hibla\Postgres\Exceptions;
 
+use RuntimeException;
+use Throwable;
+
 /**
- * Thrown when a transaction fails after all retry attempts.
- *
- * This exception is thrown when a transaction cannot be completed
- * successfully even after the specified number of retry attempts.
+ * Exception thrown when a transaction fails after all retry attempts.
  */
-class TransactionFailedException extends TransactionException
+final class TransactionFailedException extends RuntimeException
 {
-    /** @var int Number of attempts made before failure */
-    private int $attempts;
+    /** @var list<array{attempt: int, error: string, time: float}> */
+    private array $attemptHistory;
 
     /**
      * Creates a new TransactionFailedException.
      *
-     * @param  string  $message  Error message describing the failure
-     * @param  int  $attempts  Number of attempts made before failure
-     * @param  \Throwable|null  $previous  Previous exception for chaining
+     * @param  string  $message  Exception message
+     * @param  int  $attempts  Number of attempts made
+     * @param  Throwable|null  $previous  Previous exception that caused the failure
+     * @param  list<array{attempt: int, error: string, time: float}>  $attemptHistory  History of all attempts
      */
-    public function __construct(string $message, int $attempts, ?\Throwable $previous = null)
-    {
+    public function __construct(
+        string $message,
+        private readonly int $attempts,
+        ?Throwable $previous = null,
+        array $attemptHistory = []
+    ) {
         parent::__construct($message, 0, $previous);
-        $this->attempts = $attempts;
+        $this->attemptHistory = $attemptHistory;
     }
 
     /**
-     * Gets the number of attempts made before the transaction failed.
+     * Gets the number of attempts made before failure.
      *
      * @return int Number of attempts
      */
     public function getAttempts(): int
     {
         return $this->attempts;
+    }
+
+    /**
+     * Gets the history of all transaction attempts.
+     *
+     * @return list<array{attempt: int, error: string, time: float}>
+     */
+    public function getAttemptHistory(): array
+    {
+        return $this->attemptHistory;
     }
 }

@@ -1,7 +1,9 @@
 <?php
 
-use Hibla\Postgres\Utilities\QueryExecutor;
+declare(strict_types=1);
+
 use Hibla\Postgres\Exceptions\QueryException;
+use Hibla\Postgres\Utilities\QueryExecutor;
 
 /**
  * Helper function to invoke private convertPlaceholders method
@@ -48,8 +50,9 @@ describe('convertPlaceholders', function () {
     it('throws exception when mixing placeholder formats', function () {
         $sql = 'SELECT * FROM users WHERE id = ? AND name = $2';
 
-        expect(fn() => invokeConvertPlaceholders($sql))
-            ->toThrow(QueryException::class, 'Cannot mix ? and $n placeholder formats in the same query');
+        expect(fn () => invokeConvertPlaceholders($sql))
+            ->toThrow(QueryException::class, 'Cannot mix ? and $n placeholder formats in the same query')
+        ;
     });
 
     it('handles question marks in single quotes (string literals)', function () {

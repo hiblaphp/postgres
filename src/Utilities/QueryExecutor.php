@@ -4,18 +4,21 @@ declare(strict_types=1);
 
 namespace Hibla\Postgres\Utilities;
 
+use function Hibla\async;
+
 use Hibla\Async\Timer;
+
+use function Hibla\await;
+
 use Hibla\Postgres\Exceptions\QueryException;
 use Hibla\Promise\Interfaces\PromiseInterface;
+
 use PgSql\Connection;
 use PgSql\Result;
 
-use function Hibla\async;
-use function Hibla\await;
-
 /**
  * Handles asynchronous query execution and result processing.
- * 
+ *
  * This class manages the complete lifecycle of PostgreSQL query execution including
  * query sending, async completion waiting, and result processing.
  */
@@ -76,7 +79,7 @@ final class QueryExecutor
             );
         }
 
-        if ($hasDollarPlaceholders || !$hasQuestionPlaceholders) {
+        if ($hasDollarPlaceholders || ! $hasQuestionPlaceholders) {
             return $sql;
         }
 
@@ -89,33 +92,37 @@ final class QueryExecutor
         for ($i = 0; $i < $length; $i++) {
             $char = $sql[$i];
 
-            if ($char === "'" && !$inDoubleQuote) {
+            if ($char === "'" && ! $inDoubleQuote) {
                 if ($i + 1 < $length && $sql[$i + 1] === "'") {
                     $result .= "''";
                     $i++;
+
                     continue;
                 }
-                $inSingleQuote = !$inSingleQuote;
+                $inSingleQuote = ! $inSingleQuote;
                 $result .= $char;
+
                 continue;
             }
 
-            if ($char === '"' && !$inSingleQuote) {
+            if ($char === '"' && ! $inSingleQuote) {
                 if ($i + 1 < $length && $sql[$i + 1] === '"') {
                     $result .= '""';
                     $i++;
+
                     continue;
                 }
-                $inDoubleQuote = !$inDoubleQuote;
+                $inDoubleQuote = ! $inDoubleQuote;
                 $result .= $char;
+
                 continue;
             }
 
-            if ($char === '?' && !$inSingleQuote && !$inDoubleQuote) {
+            if ($char === '?' && ! $inSingleQuote && ! $inDoubleQuote) {
                 $prevChar = $i > 0 ? $sql[$i - 1] : ' ';
                 $validPrecedingChars = [' ', ',', '(', '=', '>', '<', '!', "\n", "\r", "\t"];
 
-                if (!in_array($prevChar, $validPrecedingChars, true)) {
+                if (! in_array($prevChar, $validPrecedingChars, true)) {
                     throw new QueryException(
                         "Invalid placeholder position: '?' must be preceded by whitespace or an operator. " .
                             "Found '?' after '{$prevChar}' at position {$i}. " .
@@ -127,6 +134,7 @@ final class QueryExecutor
 
                 $count++;
                 $result .= '$' . $count;
+
                 continue;
             }
 
@@ -218,6 +226,7 @@ final class QueryExecutor
     ): mixed {
         if ($result === false) {
             $error = pg_last_error($connection);
+
             throw new QueryException(
                 'Query execution failed: ' . ($error !== '' ? $error : 'Unknown error'),
                 $sql,
@@ -232,6 +241,7 @@ final class QueryExecutor
             $resultStatus === PGSQL_FATAL_ERROR
         ) {
             $error = pg_result_error($result);
+
             throw new QueryException(
                 'Query execution failed: ' . ($error !== '' ? $error : 'Unknown error'),
                 $sql,

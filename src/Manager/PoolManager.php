@@ -216,7 +216,7 @@ class PoolManager
      *
      * This method closes all idle connections and rejects any pending connection requests.
      * The pool is reset to an empty state and cannot be used until re-initialized.
-     * 
+     *
      * Note: Persistent connections are not actually closed by pg_close() but are
      * returned to the PHP persistent connection pool for reuse across requests.
      */
