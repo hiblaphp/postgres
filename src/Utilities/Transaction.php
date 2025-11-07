@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Hibla\Postgres\Utilities;
 
 use Hibla\Postgres\Manager\TransactionManager;
-use Hibla\Promise\Interfaces\PromiseInterface;
 use PgSql\Connection;
 
 /**
@@ -13,6 +12,7 @@ use PgSql\Connection;
  *
  * This class provides a clean API for executing queries within a transaction context.
  * All queries executed through this object are automatically part of the transaction.
+ * All query methods return resolved values directly instead of promises.
  */
 final class Transaction
 {
@@ -35,17 +35,17 @@ final class Transaction
      *
      * @param  string  $sql  SQL query with optional parameter placeholders ($1, $2, etc.)
      * @param  array<int, mixed>  $params  Parameter values for prepared statement
-     * @return PromiseInterface<array<int, array<string, mixed>>> Promise resolving to array of associative arrays
+     * @return array<int, array<string, mixed>> Array of associative arrays
      */
-    public function query(string $sql, array $params = []): PromiseInterface
+    public function query(string $sql, array $params = []): array
     {
-        /** @var PromiseInterface<array<int, array<string, mixed>>> */
-        return $this->queryExecutor->executeQuery(
+        /** @var array<int, array<string, mixed>> */
+        return await($this->queryExecutor->executeQuery(
             $this->connection,
             $sql,
             $params,
             'fetchAll'
-        );
+        ));
     }
 
     /**
@@ -53,17 +53,17 @@ final class Transaction
      *
      * @param  string  $sql  SQL query with optional parameter placeholders ($1, $2, etc.)
      * @param  array<int, mixed>  $params  Parameter values for prepared statement
-     * @return PromiseInterface<array<string, mixed>|null> Promise resolving to associative array or null if no rows
+     * @return array<string, mixed>|null Associative array or null if no rows
      */
-    public function fetchOne(string $sql, array $params = []): PromiseInterface
+    public function fetchOne(string $sql, array $params = []): ?array
     {
-        /** @var PromiseInterface<array<string, mixed>|null> */
-        return $this->queryExecutor->executeQuery(
+        /** @var array<string, mixed>|null */
+        return await($this->queryExecutor->executeQuery(
             $this->connection,
             $sql,
             $params,
             'fetchOne'
-        );
+        ));
     }
 
     /**
@@ -71,17 +71,17 @@ final class Transaction
      *
      * @param  string  $sql  SQL statement with optional parameter placeholders ($1, $2, etc.)
      * @param  array<int, mixed>  $params  Parameter values for prepared statement
-     * @return PromiseInterface<int> Promise resolving to number of affected rows
+     * @return int Number of affected rows
      */
-    public function execute(string $sql, array $params = []): PromiseInterface
+    public function execute(string $sql, array $params = []): int
     {
-        /** @var PromiseInterface<int> */
-        return $this->queryExecutor->executeQuery(
+        /** @var int */
+        return await($this->queryExecutor->executeQuery(
             $this->connection,
             $sql,
             $params,
             'execute'
-        );
+        ));
     }
 
     /**
@@ -89,16 +89,16 @@ final class Transaction
      *
      * @param  string  $sql  SQL query with optional parameter placeholders ($1, $2, etc.)
      * @param  array<int, mixed>  $params  Parameter values for prepared statement
-     * @return PromiseInterface<mixed> Promise resolving to scalar value or null if no rows
+     * @return mixed Scalar value or null if no rows
      */
-    public function fetchValue(string $sql, array $params = []): PromiseInterface
+    public function fetchValue(string $sql, array $params = []): mixed
     {
-        return $this->queryExecutor->executeQuery(
+        return await($this->queryExecutor->executeQuery(
             $this->connection,
             $sql,
             $params,
             'fetchValue'
-        );
+        ));
     }
 
     /**

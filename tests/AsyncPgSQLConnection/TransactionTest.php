@@ -2,8 +2,6 @@
 
 declare(strict_types=1);
 
-use function Hibla\await;
-
 use Hibla\Postgres\AsyncPgSQLConnection;
 use Hibla\Postgres\Enums\IsolationLevel;
 use Hibla\Postgres\Exceptions\TransactionFailedException;
@@ -25,8 +23,8 @@ describe('AsyncPgSQLConnection Transactions', function () {
         ')->await();
 
         $result = $db->transaction(function ($trx) {
-            await($trx->execute("INSERT INTO accounts (name, balance) VALUES ('Alice', 1000.00)"));
-            await($trx->execute("INSERT INTO accounts (name, balance) VALUES ('Bob', 2000.00)"));
+            $trx->execute("INSERT INTO accounts (name, balance) VALUES ('Alice', 1000.00)");
+            $trx->execute("INSERT INTO accounts (name, balance) VALUES ('Bob', 2000.00)");
 
             return 'success';
         })->await();
@@ -53,7 +51,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
 
         try {
             $db->transaction(function ($trx) {
-                await($trx->execute("INSERT INTO accounts (name, balance) VALUES ('Charlie', 500.00)"));
+                $trx->execute("INSERT INTO accounts (name, balance) VALUES ('Charlie', 500.00)");
 
                 throw new Exception('Simulated error');
             })->await();
@@ -85,8 +83,8 @@ describe('AsyncPgSQLConnection Transactions', function () {
         $db->transaction(function ($trx) {
             $transferAmount = 300.00;
 
-            await($trx->execute('UPDATE accounts SET balance = balance - $1 WHERE name = $2', [$transferAmount, 'Alice']));
-            await($trx->execute('UPDATE accounts SET balance = balance + $1 WHERE name = $2', [$transferAmount, 'Bob']));
+            $trx->execute('UPDATE accounts SET balance = balance - $1 WHERE name = $2', [$transferAmount, 'Alice']);
+            $trx->execute('UPDATE accounts SET balance = balance + $1 WHERE name = $2', [$transferAmount, 'Bob']);
         })->await();
 
         $aliceBalance = $db->fetchValue("SELECT balance FROM accounts WHERE name = 'Alice'")->await();
@@ -117,7 +115,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
             $db->transaction(function ($trx) use (&$attempts) {
                 $attempts++;
 
-                await($trx->execute("INSERT INTO accounts (name, balance) VALUES ('David', 100.00)"));
+                $trx->execute("INSERT INTO accounts (name, balance) VALUES ('David', 100.00)");
 
                 if ($attempts < 3) {
                     throw new Exception('Retry me');
@@ -177,7 +175,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
         ')->await();
 
         $insertedId = $db->transaction(function ($trx) {
-            $result = await($trx->query("INSERT INTO accounts (name, balance) VALUES ('Eve', 750.00) RETURNING id"));
+            $result = $trx->query("INSERT INTO accounts (name, balance) VALUES ('Eve', 750.00) RETURNING id");
 
             return $result[0]['id'];
         })->await();
@@ -203,13 +201,13 @@ describe('AsyncPgSQLConnection Transactions', function () {
         ')->await();
 
         $db->transaction(function ($trx) {
-            await($trx->execute("INSERT INTO accounts (name, balance) VALUES ('Frank', 1500.00)"));
+            $trx->execute("INSERT INTO accounts (name, balance) VALUES ('Frank', 1500.00)");
 
-            $account = await($trx->fetchOne("SELECT * FROM accounts WHERE name = 'Frank'"));
+            $account = $trx->fetchOne("SELECT * FROM accounts WHERE name = 'Frank'");
 
             expect($account['balance'])->toBe('1500.00');
 
-            await($trx->execute('UPDATE accounts SET balance = $1 WHERE name = $2', [2000.00, 'Frank']));
+            $trx->execute('UPDATE accounts SET balance = $1 WHERE name = $2', [2000.00, 'Frank']);
         })->await();
 
         $balance = $db->fetchValue("SELECT balance FROM accounts WHERE name = 'Frank'")->await();
@@ -233,19 +231,19 @@ describe('AsyncPgSQLConnection Transactions', function () {
         $db->execute("INSERT INTO accounts (name, balance) VALUES ('Grace', 1000.00)")->await();
 
         $promise1 = $db->transaction(function ($trx) {
-            $row = await($trx->fetchOne("SELECT balance FROM accounts WHERE name = 'Grace' FOR UPDATE"));
+            $row = $trx->fetchOne("SELECT balance FROM accounts WHERE name = 'Grace' FOR UPDATE");
             $currentBalance = (float)$row['balance'];
 
-            await($trx->execute('UPDATE accounts SET balance = $1 WHERE name = $2', [$currentBalance + 100, 'Grace']));
+            $trx->execute('UPDATE accounts SET balance = $1 WHERE name = $2', [$currentBalance + 100, 'Grace']);
 
             return $currentBalance + 100;
         });
 
         $promise2 = $db->transaction(function ($trx) {
-            $row = await($trx->fetchOne("SELECT balance FROM accounts WHERE name = 'Grace' FOR UPDATE"));
+            $row = $trx->fetchOne("SELECT balance FROM accounts WHERE name = 'Grace' FOR UPDATE");
             $currentBalance = (float)$row['balance'];
 
-            await($trx->execute('UPDATE accounts SET balance = $1 WHERE name = $2', [$currentBalance + 200, 'Grace']));
+            $trx->execute('UPDATE accounts SET balance = $1 WHERE name = $2', [$currentBalance + 200, 'Grace']);
 
             return $currentBalance + 200;
         });
@@ -274,7 +272,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
         $insertedName = null;
 
         $db->transaction(function ($trx) use (&$commitCallbackExecuted, &$insertedName) {
-            await($trx->execute("INSERT INTO accounts (name, balance) VALUES ('Helen', 500.00)"));
+            $trx->execute("INSERT INTO accounts (name, balance) VALUES ('Helen', 500.00)");
 
             $trx->onCommit(function () use (&$commitCallbackExecuted, &$insertedName) {
                 $commitCallbackExecuted = true;
@@ -309,7 +307,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
 
         try {
             $db->transaction(function ($trx) use (&$rollbackCallbackExecuted, &$errorMessage) {
-                await($trx->execute("INSERT INTO accounts (name, balance) VALUES ('Ivan', 300.00)"));
+                $trx->execute("INSERT INTO accounts (name, balance) VALUES ('Ivan', 300.00)");
 
                 $trx->onRollback(function () use (&$rollbackCallbackExecuted, &$errorMessage) {
                     $rollbackCallbackExecuted = true;
@@ -347,7 +345,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
         $executionOrder = [];
 
         $db->transaction(function ($trx) use (&$executionOrder) {
-            await($trx->execute("INSERT INTO accounts (name, balance) VALUES ('Jack', 100.00)"));
+            $trx->execute("INSERT INTO accounts (name, balance) VALUES ('Jack', 100.00)");
 
             $trx->onCommit(function () use (&$executionOrder) {
                 $executionOrder[] = 'first';
@@ -383,7 +381,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
 
         try {
             $db->transaction(function ($trx) use (&$executionOrder) {
-                await($trx->execute("INSERT INTO accounts (name, balance) VALUES ('Kate', 200.00)"));
+                $trx->execute("INSERT INTO accounts (name, balance) VALUES ('Kate', 200.00)");
 
                 $trx->onRollback(function () use (&$executionOrder) {
                     $executionOrder[] = 'first';
@@ -425,7 +423,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
 
         try {
             $db->transaction(function ($trx) use (&$commitExecuted, &$rollbackExecuted) {
-                await($trx->execute("INSERT INTO accounts (name, balance) VALUES ('Leo', 400.00)"));
+                $trx->execute("INSERT INTO accounts (name, balance) VALUES ('Leo', 400.00)");
 
                 $trx->onCommit(function () use (&$commitExecuted) {
                     $commitExecuted = true;
@@ -464,7 +462,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
         $rollbackExecuted = false;
 
         $db->transaction(function ($trx) use (&$commitExecuted, &$rollbackExecuted) {
-            await($trx->execute("INSERT INTO accounts (name, balance) VALUES ('Maria', 600.00)"));
+            $trx->execute("INSERT INTO accounts (name, balance) VALUES ('Maria', 600.00)");
 
             $trx->onCommit(function () use (&$commitExecuted) {
                 $commitExecuted = true;
@@ -497,9 +495,9 @@ describe('AsyncPgSQLConnection Transactions', function () {
         $auditLog = [];
 
         $db->transaction(function ($trx) use (&$auditLog) {
-            await($trx->execute("INSERT INTO accounts (name, balance) VALUES ('Nina', 1500.00)"));
+            $trx->execute("INSERT INTO accounts (name, balance) VALUES ('Nina', 1500.00)");
 
-            $account = await($trx->fetchOne("SELECT * FROM accounts WHERE name = 'Nina'"));
+            $account = $trx->fetchOne("SELECT * FROM accounts WHERE name = 'Nina'");
 
             $trx->onCommit(function () use (&$auditLog, $account) {
                 $auditLog[] = [
@@ -536,7 +534,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
 
         try {
             $db->transaction(function ($trx) use (&$resourcesAllocated, &$resourcesCleaned) {
-                await($trx->execute("INSERT INTO accounts (name, balance) VALUES ('Oscar', 800.00)"));
+                $trx->execute("INSERT INTO accounts (name, balance) VALUES ('Oscar', 800.00)");
 
                 $trx->onRollback(function () use (&$resourcesAllocated, &$resourcesCleaned) {
                     $resourcesAllocated = false;
@@ -560,7 +558,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
         $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
 
         $isolationLevel = $db->transaction(function ($trx) {
-            return await($trx->fetchValue('SHOW transaction_isolation'));
+            return $trx->fetchValue('SHOW transaction_isolation');
         })->await();
 
         expect($isolationLevel)->toBe('read committed');
@@ -570,7 +568,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
         $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
 
         $isolationLevel = $db->transaction(function ($trx) {
-            return await($trx->fetchValue('SHOW transaction_isolation'));
+            return $trx->fetchValue('SHOW transaction_isolation');
         }, isolationLevel: IsolationLevel::READ_UNCOMMITTED)->await();
 
         expect($isolationLevel)->toBe('read uncommitted');
@@ -580,7 +578,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
         $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
 
         $isolationLevel = $db->transaction(function ($trx) {
-            return await($trx->fetchValue('SHOW transaction_isolation'));
+            return $trx->fetchValue('SHOW transaction_isolation');
         }, isolationLevel: IsolationLevel::READ_COMMITTED)->await();
 
         expect($isolationLevel)->toBe('read committed');
@@ -590,7 +588,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
         $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
 
         $isolationLevel = $db->transaction(function ($trx) {
-            return await($trx->fetchValue('SHOW transaction_isolation'));
+            return $trx->fetchValue('SHOW transaction_isolation');
         }, isolationLevel: IsolationLevel::REPEATABLE_READ)->await();
 
         expect($isolationLevel)->toBe('repeatable read');
@@ -600,7 +598,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
         $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
 
         $isolationLevel = $db->transaction(function ($trx) {
-            return await($trx->fetchValue('SHOW transaction_isolation'));
+            return $trx->fetchValue('SHOW transaction_isolation');
         }, isolationLevel: IsolationLevel::SERIALIZABLE)->await();
 
         expect($isolationLevel)->toBe('serializable');
@@ -610,15 +608,15 @@ describe('AsyncPgSQLConnection Transactions', function () {
         $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
 
         $level1 = $db->transaction(function ($trx) {
-            return await($trx->fetchValue('SHOW transaction_isolation'));
+            return $trx->fetchValue('SHOW transaction_isolation');
         }, isolationLevel: IsolationLevel::READ_COMMITTED)->await();
 
         $level2 = $db->transaction(function ($trx) {
-            return await($trx->fetchValue('SHOW transaction_isolation'));
+            return $trx->fetchValue('SHOW transaction_isolation');
         }, isolationLevel: IsolationLevel::SERIALIZABLE)->await();
 
         $level3 = $db->transaction(function ($trx) {
-            return await($trx->fetchValue('SHOW transaction_isolation'));
+            return $trx->fetchValue('SHOW transaction_isolation');
         }, isolationLevel: IsolationLevel::REPEATABLE_READ)->await();
 
         expect($level1)->toBe('read committed')
@@ -632,15 +630,15 @@ describe('AsyncPgSQLConnection Transactions', function () {
 
         $results = Promise::all([
             $db->transaction(function ($trx) {
-                return await($trx->fetchValue('SHOW transaction_isolation'));
+                return $trx->fetchValue('SHOW transaction_isolation');
             }, isolationLevel: IsolationLevel::READ_COMMITTED),
 
             $db->transaction(function ($trx) {
-                return await($trx->fetchValue('SHOW transaction_isolation'));
+                return $trx->fetchValue('SHOW transaction_isolation');
             }, isolationLevel: IsolationLevel::REPEATABLE_READ),
 
             $db->transaction(function ($trx) {
-                return await($trx->fetchValue('SHOW transaction_isolation'));
+                return $trx->fetchValue('SHOW transaction_isolation');
             }, isolationLevel: IsolationLevel::SERIALIZABLE),
         ])->await();
 
@@ -654,12 +652,12 @@ describe('AsyncPgSQLConnection Transactions', function () {
         $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
 
         $db->transaction(function ($trx) {
-            $level = await($trx->fetchValue('SHOW transaction_isolation'));
+            $level = $trx->fetchValue('SHOW transaction_isolation');
             expect($level)->toBe('serializable');
         }, isolationLevel: IsolationLevel::SERIALIZABLE)->await();
 
         $levelAfter = $db->transaction(function ($trx) {
-            return await($trx->fetchValue('SHOW transaction_isolation'));
+            return $trx->fetchValue('SHOW transaction_isolation');
         })->await();
 
         expect($levelAfter)->toBe('read committed');
@@ -681,18 +679,18 @@ describe('AsyncPgSQLConnection Transactions', function () {
 
         Promise::all([
             $db->transaction(function ($trx) use (&$readValues) {
-                $value1 = await($trx->fetchValue('SELECT value FROM test_isolation WHERE id = 1'));
+                $value1 = $trx->fetchValue('SELECT value FROM test_isolation WHERE id = 1');
                 $readValues['trx1_read1'] = $value1;
 
                 Hibla\sleep(0.1);
 
-                $value2 = await($trx->fetchValue('SELECT value FROM test_isolation WHERE id = 1'));
+                $value2 = $trx->fetchValue('SELECT value FROM test_isolation WHERE id = 1');
                 $readValues['trx1_read2'] = $value2;
             }, isolationLevel: IsolationLevel::REPEATABLE_READ),
 
             $db->transaction(function ($trx) {
                 Hibla\sleep(0.05);
-                await($trx->execute('UPDATE test_isolation SET value = 200 WHERE id = 1'));
+                $trx->execute('UPDATE test_isolation SET value = 200 WHERE id = 1');
             }),
         ])->await();
 
@@ -719,18 +717,18 @@ describe('AsyncPgSQLConnection Transactions', function () {
 
         Promise::all([
             $db->transaction(function ($trx) use (&$readValues) {
-                $value1 = await($trx->fetchValue('SELECT value FROM test_isolation WHERE id = 1'));
+                $value1 = $trx->fetchValue('SELECT value FROM test_isolation WHERE id = 1');
                 $readValues['trx1_read1'] = $value1;
 
                 Hibla\sleep(0.1);
 
-                $value2 = await($trx->fetchValue('SELECT value FROM test_isolation WHERE id = 1'));
+                $value2 = $trx->fetchValue('SELECT value FROM test_isolation WHERE id = 1');
                 $readValues['trx1_read2'] = $value2;
             }, isolationLevel: IsolationLevel::READ_COMMITTED),
 
             $db->transaction(function ($trx) {
                 Hibla\sleep(0.05);
-                await($trx->execute('UPDATE test_isolation SET value = 200 WHERE id = 1'));
+                $trx->execute('UPDATE test_isolation SET value = 200 WHERE id = 1');
             }),
         ])->await();
 

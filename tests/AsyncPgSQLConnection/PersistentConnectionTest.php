@@ -150,7 +150,7 @@ describe('Transaction Handling', function () {
         $client = createPersistentPgConnection();
 
         $result = $client->transaction(function ($connection) {
-            $result = await($connection->fetchValue('SELECT 1 as test'));
+            $result = $connection->fetchValue('SELECT 1 as test');
 
             return $result;
         })->await();
@@ -163,8 +163,8 @@ describe('Transaction Handling', function () {
 
         try {
             $client->transaction(function ($connection) {
-                await($connection->execute('CREATE TEMPORARY TABLE IF NOT EXISTS test_rollback (id INT)'));
-                await($connection->execute('INSERT INTO test_rollback VALUES (1)'));
+                $connection->execute('CREATE TEMPORARY TABLE IF NOT EXISTS test_rollback (id INT)');
+                $connection->execute('INSERT INTO test_rollback VALUES (1)');
 
                 throw new Exception('Intentional error');
             })->await();
