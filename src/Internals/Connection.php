@@ -431,11 +431,6 @@ class Connection
     /**
      * Fetches the current socket from libpq for the active connection.
      *
-     * [FIX #2] This must be called on every pg_connect_poll() iteration rather than
-     * reading the cached $this->socket, because libpq may replace the underlying file
-     * descriptor between poll calls (documented in libpq: "do not assume that the socket
-     * remains the same across PQconnectPoll calls").
-     *
      * @return resource|false
      */
     private function getFreshSocket(): mixed
