@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-use Hibla\Postgres\AsyncPgSQLConnection;
+use Hibla\Postgres\PgSqlClient;
 use Hibla\Promise\Promise;
 use Tests\Helpers\TestHelper;
 
-describe('AsyncPgSQLConnection Concurrent Operations', function () {
+describe('PgSqlClient Concurrent Operations', function () {
     it('executes multiple queries concurrently', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 10);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 10);
 
         $db->execute('DROP TABLE IF EXISTS logs')->await();
         $db->execute('
@@ -46,7 +46,7 @@ describe('AsyncPgSQLConnection Concurrent Operations', function () {
     });
 
     it('executes mixed query types concurrently', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 10);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 10);
 
         $db->execute('DROP TABLE IF EXISTS logs')->await();
         $db->execute('
@@ -79,7 +79,7 @@ describe('AsyncPgSQLConnection Concurrent Operations', function () {
 
     it('handles concurrent operations with connection pool limit', function () {
         $poolSize = 3;
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), $poolSize);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), $poolSize);
 
         $db->execute('DROP TABLE IF EXISTS test_concurrent')->await();
         $db->execute('
@@ -110,7 +110,7 @@ describe('AsyncPgSQLConnection Concurrent Operations', function () {
     });
 
     it('executes queries with Promise::concurrent', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 10);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 10);
 
         $db->execute('DROP TABLE IF EXISTS logs')->await();
         $db->execute('
@@ -142,7 +142,7 @@ describe('AsyncPgSQLConnection Concurrent Operations', function () {
     });
 
     it('handles concurrent reads and writes', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 10);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 10);
 
         $db->execute('DROP TABLE IF EXISTS logs')->await();
         $db->execute('
@@ -188,7 +188,7 @@ describe('AsyncPgSQLConnection Concurrent Operations', function () {
     });
 
     it('maintains data consistency under concurrent load', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 10);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 10);
 
         $db->execute('DROP TABLE IF EXISTS logs')->await();
         $db->execute('
@@ -224,7 +224,7 @@ describe('AsyncPgSQLConnection Concurrent Operations', function () {
     });
 
     it('handles concurrent operations with run method', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 10);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 10);
 
         $db->execute('DROP TABLE IF EXISTS logs')->await();
         $db->execute('

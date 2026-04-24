@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-use Hibla\Postgres\AsyncPgSQLConnection;
+use Hibla\Postgres\PgSqlClient;
 use Tests\Helpers\TestHelper;
 
-describe('AsyncPgSQLConnection Execute', function () {
+describe('PgSqlClient Execute', function () {
     it('executes INSERT and returns affected rows', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS orders')->await();
         $db->execute('
@@ -29,7 +29,7 @@ describe('AsyncPgSQLConnection Execute', function () {
     });
 
     it('executes INSERT with parameters', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS orders')->await();
         $db->execute('
@@ -57,7 +57,7 @@ describe('AsyncPgSQLConnection Execute', function () {
     });
 
     it('executes multiple INSERTs', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS orders')->await();
         $db->execute('
@@ -87,7 +87,7 @@ describe('AsyncPgSQLConnection Execute', function () {
     });
 
     it('executes UPDATE and returns affected rows', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS orders')->await();
         $db->execute('
@@ -113,7 +113,7 @@ describe('AsyncPgSQLConnection Execute', function () {
     });
 
     it('executes DELETE and returns affected rows', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS orders')->await();
         $db->execute('
@@ -140,7 +140,7 @@ describe('AsyncPgSQLConnection Execute', function () {
     });
 
     it('returns 0 for statements affecting no rows', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS orders')->await();
         $db->execute('
@@ -160,7 +160,7 @@ describe('AsyncPgSQLConnection Execute', function () {
     });
 
     it('handles batch inserts', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS orders')->await();
         $db->execute('

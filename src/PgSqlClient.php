@@ -29,7 +29,7 @@ use PgSql\Connection;
  * Each instance is completely independent, allowing true multi-database support
  * without global state.
  */
-final class AsyncPgSQLConnection
+final class PgSqlClient
 {
     /** @var PoolManager|null Connection pool instance for this connection */
     private ?PoolManager $pool = null;

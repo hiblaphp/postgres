@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-use Hibla\Postgres\AsyncPgSQLConnection;
+use Hibla\Postgres\PgSqlClient;
 use Hibla\Promise\Promise;
 use Tests\Helpers\TestHelper;
 
-describe('AsyncPgSQLConnection Connection Pool', function () {
+describe('PgSqlClient Connection Pool', function () {
     it('tracks connection pool statistics', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $stats = $db->getStats();
 
@@ -27,7 +27,7 @@ describe('AsyncPgSQLConnection Connection Pool', function () {
     });
 
     it('reuses connections from pool', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS test_pool')->await();
         $db->execute('
@@ -57,7 +57,7 @@ describe('AsyncPgSQLConnection Connection Pool', function () {
 
     it('handles pool exhaustion gracefully', function () {
         $poolSize = 2;
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), $poolSize);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), $poolSize);
 
         $db->execute('DROP TABLE IF EXISTS test_exhaustion')->await();
         $db->execute('
@@ -87,7 +87,7 @@ describe('AsyncPgSQLConnection Connection Pool', function () {
     });
 
     it('gets last connection used', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         expect($db->getLastConnection())->toBeNull();
 
@@ -108,7 +108,7 @@ describe('AsyncPgSQLConnection Connection Pool', function () {
     });
 
     it('handles run method with connection pool', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $result = $db->run(function ($conn) {
             expect($conn)->toBeInstanceOf(PgSql\Connection::class);
@@ -120,7 +120,7 @@ describe('AsyncPgSQLConnection Connection Pool', function () {
     });
 
     it('releases connection after run method', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 3);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 3);
 
         $promises = [];
 
@@ -139,7 +139,7 @@ describe('AsyncPgSQLConnection Connection Pool', function () {
     });
 
     it('handles errors in run method gracefully', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         expect(function () use ($db) {
             $db->run(function ($conn) {

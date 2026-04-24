@@ -2,16 +2,16 @@
 
 declare(strict_types=1);
 
-use Hibla\Postgres\AsyncPgSQLConnection;
+use Hibla\Postgres\PgSqlClient;
 use Hibla\Postgres\Enums\IsolationLevel;
 use Hibla\Postgres\Exceptions\TransactionFailedException;
 use Hibla\Promise\Promise;
 
 use Tests\Helpers\TestHelper;
 
-describe('AsyncPgSQLConnection Transactions', function () {
+describe('PgSqlClient Transactions', function () {
     it('commits successful transaction', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -38,7 +38,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('rolls back transaction on exception', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -66,7 +66,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('performs money transfer with transaction', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -98,7 +98,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('retries transaction on failure', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -136,7 +136,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('fails after max retry attempts', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -163,7 +163,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('returns value from transaction', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -189,7 +189,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('handles nested queries within transaction', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -217,7 +217,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('isolates transactions across concurrent operations', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -257,7 +257,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('executes onCommit callback after successful transaction', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -291,7 +291,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('executes onRollback callback after transaction failure', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -331,7 +331,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('executes multiple onCommit callbacks in order', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -366,7 +366,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('executes multiple onRollback callbacks in order', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -407,7 +407,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('does not execute onCommit callbacks when transaction rolls back', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -447,7 +447,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('does not execute onRollback callbacks when transaction commits', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -481,7 +481,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('can use onCommit to log successful operations', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -518,7 +518,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('can use onRollback to clean up resources', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS accounts')->await();
         $db->execute('
@@ -555,7 +555,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('uses default READ COMMITTED isolation level when not specified', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $isolationLevel = $db->transaction(function ($trx) {
             return $trx->fetchValue('SHOW transaction_isolation');
@@ -565,7 +565,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('sets READ UNCOMMITTED isolation level', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $isolationLevel = $db->transaction(function ($trx) {
             return $trx->fetchValue('SHOW transaction_isolation');
@@ -575,7 +575,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('sets READ COMMITTED isolation level', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $isolationLevel = $db->transaction(function ($trx) {
             return $trx->fetchValue('SHOW transaction_isolation');
@@ -585,7 +585,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('sets REPEATABLE READ isolation level', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $isolationLevel = $db->transaction(function ($trx) {
             return $trx->fetchValue('SHOW transaction_isolation');
@@ -595,7 +595,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('sets SERIALIZABLE isolation level', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $isolationLevel = $db->transaction(function ($trx) {
             return $trx->fetchValue('SHOW transaction_isolation');
@@ -605,7 +605,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('changes isolation level across different transactions', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $level1 = $db->transaction(function ($trx) {
             return $trx->fetchValue('SHOW transaction_isolation');
@@ -626,7 +626,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('maintains different isolation levels in concurrent transactions', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $results = Promise::all([
             $db->transaction(function ($trx) {
@@ -649,7 +649,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('resets isolation level after transaction completes', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->transaction(function ($trx) {
             $level = $trx->fetchValue('SHOW transaction_isolation');
@@ -664,7 +664,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('demonstrates REPEATABLE READ prevents non-repeatable reads', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS test_isolation')->await();
         $db->execute('
@@ -702,7 +702,7 @@ describe('AsyncPgSQLConnection Transactions', function () {
     });
 
     it('demonstrates READ COMMITTED allows non-repeatable reads', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS test_isolation')->await();
         $db->execute('

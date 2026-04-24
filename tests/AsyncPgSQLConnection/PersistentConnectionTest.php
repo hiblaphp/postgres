@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-use Hibla\Postgres\AsyncPgSQLConnection;
+use Hibla\Postgres\PgSqlClient;
 use Hibla\Promise\Promise;
 
-function createPersistentPgConnection(int $poolSize = 10): AsyncPgSQLConnection
+function createPersistentPgConnection(int $poolSize = 10): PgSqlClient
 {
-    return new AsyncPgSQLConnection([
+    return new PgSqlClient([
         'host' => getenv('PGSQL_HOST') ?: '127.0.0.1',
         'port' => (int) (getenv('PGSQL_PORT') ?: 5432),
         'database' => getenv('PGSQL_DATABASE') ?: 'postgres',
@@ -17,9 +17,9 @@ function createPersistentPgConnection(int $poolSize = 10): AsyncPgSQLConnection
     ], $poolSize);
 }
 
-function createRegularPgConnection(int $poolSize = 10): AsyncPgSQLConnection
+function createRegularPgConnection(int $poolSize = 10): PgSqlClient
 {
-    return new AsyncPgSQLConnection([
+    return new PgSqlClient([
         'host' => getenv('PGSQL_HOST') ?: '127.0.0.1',
         'port' => (int) (getenv('PGSQL_PORT') ?: 5432),
         'database' => getenv('PGSQL_DATABASE') ?: 'postgres',

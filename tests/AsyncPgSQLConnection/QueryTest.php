@@ -2,12 +2,12 @@
 
 declare(strict_types=1);
 
-use Hibla\Postgres\AsyncPgSQLConnection;
+use Hibla\Postgres\PgSqlClient;
 use Tests\Helpers\TestHelper;
 
-describe('AsyncPgSQLConnection Query', function () {
+describe('PgSqlClient Query', function () {
     it('executes simple SELECT query', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS users')->await();
         $db->execute('
@@ -35,7 +35,7 @@ describe('AsyncPgSQLConnection Query', function () {
     });
 
     it('returns empty array for query with no results', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS users')->await();
         $db->execute('
@@ -57,7 +57,7 @@ describe('AsyncPgSQLConnection Query', function () {
     });
 
     it('executes parameterized query', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS users')->await();
         $db->execute('
@@ -83,7 +83,7 @@ describe('AsyncPgSQLConnection Query', function () {
     });
 
     it('executes query with multiple parameters', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS users')->await();
         $db->execute('
@@ -112,7 +112,7 @@ describe('AsyncPgSQLConnection Query', function () {
     });
 
     it('handles NULL values correctly', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS users')->await();
         $db->execute('
@@ -137,7 +137,7 @@ describe('AsyncPgSQLConnection Query', function () {
     });
 
     it('throws exception for invalid SQL', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $exceptionThrown = false;
 
@@ -151,7 +151,7 @@ describe('AsyncPgSQLConnection Query', function () {
     });
 
     it('executes multiple queries in sequence', function () {
-        $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+        $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
         $db->execute('DROP TABLE IF EXISTS users')->await();
         $db->execute('

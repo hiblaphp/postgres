@@ -2,13 +2,13 @@
 
 declare(strict_types=1);
 
-use Hibla\Postgres\AsyncPgSQLConnection;
+use Hibla\Postgres\PgSqlClient;
 use Tests\Helpers\TestHelper;
 
-describe('AsyncPgSQLConnection Fetch Methods', function () {
+describe('PgSqlClient Fetch Methods', function () {
     describe('fetchOne', function () {
         it('fetches single row', function () {
-            $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+            $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
             $db->execute('DROP TABLE IF EXISTS products')->await();
             $db->execute('
@@ -34,7 +34,7 @@ describe('AsyncPgSQLConnection Fetch Methods', function () {
         });
 
         it('returns null when no rows match', function () {
-            $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+            $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
             $db->execute('DROP TABLE IF EXISTS products')->await();
             $db->execute('
@@ -54,7 +54,7 @@ describe('AsyncPgSQLConnection Fetch Methods', function () {
         });
 
         it('returns first row when multiple match', function () {
-            $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+            $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
             $db->execute('DROP TABLE IF EXISTS products')->await();
             $db->execute('
@@ -81,7 +81,7 @@ describe('AsyncPgSQLConnection Fetch Methods', function () {
 
     describe('fetchValue', function () {
         it('fetches single column value', function () {
-            $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+            $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
             $db->execute('DROP TABLE IF EXISTS products')->await();
             $db->execute('
@@ -103,7 +103,7 @@ describe('AsyncPgSQLConnection Fetch Methods', function () {
         });
 
         it('fetches value from specific column', function () {
-            $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+            $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
             $db->execute('DROP TABLE IF EXISTS products')->await();
             $db->execute('
@@ -125,7 +125,7 @@ describe('AsyncPgSQLConnection Fetch Methods', function () {
         });
 
         it('returns null when no rows match', function () {
-            $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+            $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
             $db->execute('DROP TABLE IF EXISTS products')->await();
             $db->execute('
@@ -145,7 +145,7 @@ describe('AsyncPgSQLConnection Fetch Methods', function () {
         });
 
         it('fetches aggregate functions', function () {
-            $db = new AsyncPgSQLConnection(TestHelper::getTestConfig(), 5);
+            $db = new PgSqlClient(TestHelper::getTestConfig(), 5);
 
             $db->execute('DROP TABLE IF EXISTS products')->await();
             $db->execute('
