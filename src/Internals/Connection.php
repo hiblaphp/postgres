@@ -27,6 +27,35 @@ use Throwable;
  *   - Implements ConnectionBridge so handlers can call back into lifecycle
  *     methods without a circular class dependency.
  *   - Delegates all I/O and protocol logic to the four handler classes.
+ * 
+ * 
+ *
+ * CANCELLATION BEHAVIOUR (ext-pgsql limitation)
+ * -----------------------------------------------
+ * Due to a known limitation in PHP's ext-pgsql extension, there is no true
+ * client-side-only cancellation. When a query is in progress and the connection
+ * is closed, PHP's internal _close_pgsql_link() calls PQgetResult() in a loop
+ * before calling PQfinish(), which blocks until the server finishes the query.
+ *
+ * The only way to unblock this is to send a cancel signal to the server first,
+ * which pg_cancel_query() does via a separate short-lived TCP connection.
+ *
+ * This flag controls what happens AFTER cancellation, not whether a server
+ * signal is sent:
+ *
+ *   true  → Cancel signal is sent and the connection is kept alive for reuse.
+ *            Use this in connection pool scenarios where you want to recycle
+ *            the connection after cancellation.
+ *
+ *   false → Cancel signal is still sent (unavoidable), but the connection is
+ *           closed and discarded afterwards. Use this for single-use connections
+ *           or when you do not want to reuse the connection after cancellation.
+ *
+ * If you need true client-side cancellation with no server interaction, consider
+ * using pecl-pq instead of ext-pgsql, or set a session-level statement_timeout
+ * on connect to bound query execution time on the server side.
+ *
+ * Reference: https://bugs.php.net/bug.php?id=79134
  */
 class Connection implements ConnectionBridge
 {
@@ -155,7 +184,7 @@ class Connection implements ConnectionBridge
         // PreparedStatement after the server acknowledges the PREPARE without
         // needing a direct dependency on this class.
         $connection = $this;
-        $factory = static fn () => new PreparedStatement($connection, $name);
+        $factory = static fn() => new PreparedStatement($connection, $name);
 
         return $this->enqueueCommand(CommandRequest::TYPE_PREPARE, $parsedSql, [], $factory);
     }
@@ -222,7 +251,7 @@ class Connection implements ConnectionBridge
             || $status === PGSQL_TRANSACTION_INERROR
         ) {
             return $this->enqueueCommand(CommandRequest::TYPE_QUERY, 'ROLLBACK')
-                ->then(fn () => $this->enqueueCommand(CommandRequest::TYPE_RESET, 'DISCARD ALL'))
+                ->then(fn() => $this->enqueueCommand(CommandRequest::TYPE_RESET, 'DISCARD ALL'))
             ;
         }
 
@@ -279,11 +308,6 @@ class Connection implements ConnectionBridge
         while (! $this->ctx->commandQueue->isEmpty()) {
             $this->ctx->commandQueue->dequeue()->promise->reject($exception);
         }
-    }
-
-    public function __destruct()
-    {
-        $this->close();
     }
 
     public function onConnectReady(): void
@@ -504,6 +528,8 @@ class Connection implements ConnectionBridge
             if ($this->ctx->currentCommand === $command) {
                 if ($this->config->enableServerSideCancellation && $this->ctx->connection !== null) {
                     @pg_cancel_query($this->ctx->connection);
+                } else {
+                    $this->close();
                 }
             } else {
                 $this->removeFromQueue($command);
@@ -530,7 +556,7 @@ class Connection implements ConnectionBridge
     private function normalizeParams(array $params): array
     {
         return array_map(
-            static fn (mixed $p) => is_bool($p) ? ($p ? '1' : '0') : $p,
+            static fn(mixed $p) => \is_bool($p) ? ($p ? '1' : '0') : $p,
             $params
         );
     }
