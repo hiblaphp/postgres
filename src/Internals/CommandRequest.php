@@ -29,7 +29,7 @@ final class CommandRequest
         public readonly string $type,
         public readonly Promise $promise,
         public readonly string $sql = '',
-        public readonly array $params =[],
+        public readonly array $params = [],
         public readonly mixed $context = null,
     ) {
     }

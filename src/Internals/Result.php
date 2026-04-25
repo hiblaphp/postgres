@@ -17,7 +17,7 @@ class Result implements PgSqlResult
      * @inheritDoc
      */
     public readonly int $rowCount;
-    
+
     /**
      * @inheritDoc
      */
@@ -38,8 +38,8 @@ class Result implements PgSqlResult
         public readonly int $lastInsertId = 0,
         public readonly int $connectionId = 0,
         public readonly ?int $insertedOid = null,
-        public readonly array $columns =[],
-        private readonly array $rows =[],
+        public readonly array $columns = [],
+        private readonly array $rows = [],
     ) {
         $this->rowCount = \count($this->rows);
         $this->columnCount = \count($this->columns);
@@ -77,6 +77,7 @@ class Result implements PgSqlResult
         if ($this->position >= $this->rowCount) {
             return null;
         }
+
         return $this->rows[$this->position++];
     }
 

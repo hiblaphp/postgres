@@ -48,10 +48,12 @@ final class QueryParser
                 if ($i + 1 < $length && $sql[$i + 1] === "'") {
                     $result .= "''";
                     $i++;
+
                     continue;
                 }
                 $inSingleQuote = ! $inSingleQuote;
                 $result .= $char;
+
                 continue;
             }
 
@@ -59,16 +61,19 @@ final class QueryParser
                 if ($i + 1 < $length && $sql[$i + 1] === '"') {
                     $result .= '""';
                     $i++;
+
                     continue;
                 }
                 $inDoubleQuote = ! $inDoubleQuote;
                 $result .= $char;
+
                 continue;
             }
 
             if ($char === '?' && ! $inSingleQuote && ! $inDoubleQuote) {
                 $count++;
                 $result .= '$' . $count;
+
                 continue;
             }
 

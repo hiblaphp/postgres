@@ -2,8 +2,8 @@
 
 declare(strict_types=1);
 
-use Hibla\Postgres\PgSqlClient;
 use Hibla\Postgres\Exceptions\ConfigurationException;
+use Hibla\Postgres\PgSqlClient;
 use Tests\Helpers\TestHelper;
 
 describe('PgSqlClient Constructor', function () {

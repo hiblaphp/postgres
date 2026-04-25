@@ -111,10 +111,17 @@ final readonly class PgSqlConfig
     public function withQueryCancellation(bool $enabled): self
     {
         return new self(
-            host: $this->host, port: $this->port, username: $this->username, password: $this->password,
-            database: $this->database, sslmode: $this->sslmode, connectTimeout: $this->connectTimeout,
-            applicationName: $this->applicationName, killTimeoutSeconds: $this->killTimeoutSeconds,
-            enableServerSideCancellation: $enabled, resetConnection: $this->resetConnection
+            host: $this->host,
+            port: $this->port,
+            username: $this->username,
+            password: $this->password,
+            database: $this->database,
+            sslmode: $this->sslmode,
+            connectTimeout: $this->connectTimeout,
+            applicationName: $this->applicationName,
+            killTimeoutSeconds: $this->killTimeoutSeconds,
+            enableServerSideCancellation: $enabled,
+            resetConnection: $this->resetConnection
         );
     }
 
@@ -123,7 +130,7 @@ final readonly class PgSqlConfig
      */
     public function toConnectionString(): string
     {
-        $parts =[
+        $parts = [
             "host='{$this->host}'",
             "port='{$this->port}'",
             "dbname='{$this->database}'",
