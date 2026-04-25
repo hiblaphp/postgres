@@ -4,8 +4,6 @@ declare(strict_types=1);
 
 namespace Hibla\Postgres\Internals;
 
-use function Hibla\await;
-
 use Hibla\Postgres\Interfaces\PgSqlRowStream;
 use Hibla\Promise\Exceptions\CancelledException;
 use Hibla\Promise\Interfaces\PromiseInterface;
@@ -13,20 +11,30 @@ use Hibla\Promise\Promise;
 use SplQueue;
 use Throwable;
 
+use function Hibla\await;
+
 /**
  * @internal
  */
 class RowStream implements PgSqlRowStream
 {
     private SplQueue $buffer;
+
     private array $columnNames = [];
+
     private ?Promise $waiter = null;
+
     private ?PromiseInterface $commandPromise = null;
+
     private ?Throwable $error = null;
+
     private bool $completed = false;
+
     private bool $cancelled = false;
 
-    /** @var \Closure(): void|null */
+    /**
+     * @var \Closure(): void|null
+     */
     private ?\Closure $resumeCallback = null;
 
     public int $columnCount {
