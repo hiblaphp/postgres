@@ -30,33 +30,47 @@ use Throwable;
  */
 class Connection implements ConnectionBridge
 {
-    private readonly ConnectionContext    $ctx;
+    private readonly ConnectionContext  $ctx;
 
-    private readonly ConnectHandler       $connectHandler;
+    private readonly ConnectHandler     $connectHandler;
 
-    private readonly CursorHandler        $cursorHandler;
+    private readonly CursorHandler      $cursorHandler;
 
-    private readonly QueryResultHandler   $queryResultHandler;
+    private readonly QueryResultHandler $queryResultHandler;
 
-    private readonly StreamHandler        $streamHandler;
+    private readonly StreamHandler      $streamHandler;
 
-    public function __construct(private readonly PgSqlConfig $config)
+    private readonly PgSqlConfig $config;
+
+    /**
+     * Monotonically increasing counter used to generate unique statement names.
+     * Names are local to this connection, so a simple integer is sufficient.
+     */
+    private int $stmtCounter = 0;
+
+    public function __construct(PgSqlConfig|array|string $config)
     {
+        $this->config = match (true) {
+            $config instanceof PgSqlConfig => $config,
+            \is_array($config) => PgSqlConfig::fromArray($config),
+            \is_string($config) => PgSqlConfig::fromUri($config),
+        };
+
         $this->ctx = new ConnectionContext();
 
-        // Wire handlers together. Order matters: cursor and queryResult are
-        // independent of each other, but stream depends on both.
         $this->cursorHandler = new CursorHandler($this->ctx, $this);
         $this->queryResultHandler = new QueryResultHandler($this->ctx, $this, $this->cursorHandler);
         $this->streamHandler = new StreamHandler($this->ctx, $this, $this->cursorHandler, $this->queryResultHandler);
         $this->connectHandler = new ConnectHandler($this->ctx, $this);
     }
 
-    public static function create(PgSqlConfig $config): PromiseInterface
+    /**
+     * @return PromiseInterface<self>
+     */
+    public static function create(PgSqlConfig|array|string $config): PromiseInterface
     {
-        return (new self($config))->connect();
+        return new self($config)->connect();
     }
-
 
     public function connect(): PromiseInterface
     {
@@ -98,32 +112,112 @@ class Connection implements ConnectionBridge
         return $this->ctx->connectPromise;
     }
 
-    public function query(string $sql, array $params = []): PromiseInterface
+    /**
+     * Executes a plain SQL query and returns the full buffered result.
+     * Do NOT pass user-supplied values directly — use prepare() + executeStatement() instead.
+     *
+     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlResult>
+     */
+    public function query(string $sql): PromiseInterface
     {
-        return $this->enqueueCommand(CommandRequest::TYPE_QUERY, $sql, $params);
+        return $this->enqueueCommand(CommandRequest::TYPE_QUERY, $sql);
     }
 
-    public function streamQuery(string $sql, array $params = [], int $bufferSize = 100): PromiseInterface
+    /**
+     * Streams a plain SQL query row-by-row.
+     * Do NOT pass user-supplied values directly — use prepare() + executeStatementStream() instead.
+     *
+     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlRowStream>
+     */
+    public function streamQuery(string $sql, int $bufferSize = 100): PromiseInterface
     {
         $stream = new RowStream($bufferSize);
-        $commandPromise = $this->enqueueCommand(CommandRequest::TYPE_STREAM, $sql, $params, $stream);
+        $commandPromise = $this->enqueueCommand(CommandRequest::TYPE_STREAM, $sql, [], $stream);
         $stream->bindCommandPromise($commandPromise);
 
-        // Resolve immediately so the consumer can start iterating before all rows
-        // arrive. Errors surface through stream->error() → getIterator() throws.
         return Promise::resolved($stream);
     }
 
+    /**
+     * Prepares a SQL statement on the server and returns a PreparedStatement handle.
+     *
+     * Converts `?` placeholders to the PostgreSQL `$1, $2, …` format automatically.
+     *
+     * @return PromiseInterface<PreparedStatement>
+     */
+    public function prepare(string $sql): PromiseInterface
+    {
+        $name = 'stmt_' . (++$this->stmtCounter);
+
+        [$parsedSql] = QueryParser::parsePlaceholders($sql);
+
+        // Pass a factory closure so QueryResultHandler can construct the
+        // PreparedStatement after the server acknowledges the PREPARE without
+        // needing a direct dependency on this class.
+        $connection = $this;
+        $factory = static fn () => new PreparedStatement($connection, $name);
+
+        return $this->enqueueCommand(CommandRequest::TYPE_PREPARE, $parsedSql, [], $factory);
+    }
+
+    /**
+     * Executes a prepared statement and returns the full buffered result.
+     *
+     * @param array<int, mixed> $params
+     *
+     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlResult>
+     */
+    public function executeStatement(PreparedStatement $stmt, array $params): PromiseInterface
+    {
+        return $this->enqueueCommand(CommandRequest::TYPE_EXECUTE, $stmt->name, $params);
+    }
+
+    /**
+     * Executes a prepared statement and streams the result row-by-row.
+     *
+     * @param array<int, mixed> $params
+     *
+     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlRowStream>
+     */
+    public function executeStatementStream(PreparedStatement $stmt, array $params, int $bufferSize = 100): PromiseInterface
+    {
+        $stream = new RowStream($bufferSize);
+        $commandPromise = $this->enqueueCommand(CommandRequest::TYPE_EXECUTE_STREAM, $stmt->name, $params, $stream);
+        $stream->bindCommandPromise($commandPromise);
+
+        return Promise::resolved($stream);
+    }
+
+    /**
+     * Deallocates a prepared statement on the server.
+     *
+     * @return PromiseInterface<void>
+     */
+    public function closeStatement(string $name): PromiseInterface
+    {
+        // Statement names are generated by us (alphanumeric + underscore) so
+        // embedding directly is safe. Avoid pg_escape_identifier here
+        // because it requires a live connection resource.
+        return $this->enqueueCommand(CommandRequest::TYPE_QUERY, "DEALLOCATE {$name}");
+    }
+
+    /**
+     * @return PromiseInterface<bool>
+     */
     public function ping(): PromiseInterface
     {
         return $this->enqueueCommand(CommandRequest::TYPE_PING);
     }
 
+    /**
+     * @return PromiseInterface<void>
+     */
     public function reset(): PromiseInterface
     {
         $status = $this->getTransactionStatus();
 
-        if ($status === PGSQL_TRANSACTION_ACTIVE
+        if (
+            $status === PGSQL_TRANSACTION_ACTIVE
             || $status === PGSQL_TRANSACTION_INTRANS
             || $status === PGSQL_TRANSACTION_INERROR
         ) {
@@ -192,14 +286,11 @@ class Connection implements ConnectionBridge
         $this->close();
     }
 
-    // ── ConnectionBridge implementation ───────────────────────────────────────
-
     public function onConnectReady(): void
     {
-        // ConnectHandler has already set state = READY and cleared poll watchers.
         $promise = $this->ctx->connectPromise;
         $this->ctx->connectPromise = null;
-        $promise?->resolve($this); // callers receive the Connection instance
+        $promise?->resolve($this);
         $this->processNextCommand();
     }
 
@@ -225,9 +316,10 @@ class Connection implements ConnectionBridge
         $this->ctx->cursor->reset();
 
         if ($error !== null) {
-            // For stream commands the consumer is already iterating — it will never
-            // see a promise rejection. Push the error into the stream instead.
-            if ($cmd?->type === CommandRequest::TYPE_STREAM && $cmd->context !== null) {
+            $isStream = $cmd?->type === CommandRequest::TYPE_STREAM
+                || $cmd?->type === CommandRequest::TYPE_EXECUTE_STREAM;
+
+            if ($isStream && $cmd->context !== null) {
                 $cmd->context->error($error);
             }
             $cmd?->promise->reject($error);
@@ -240,7 +332,8 @@ class Connection implements ConnectionBridge
 
     public function processNextCommand(): void
     {
-        if ($this->ctx->state !== ConnectionState::READY
+        if (
+            $this->ctx->state !== ConnectionState::READY
             || $this->ctx->commandQueue->isEmpty()
             || $this->ctx->currentCommand !== null
         ) {
@@ -256,52 +349,113 @@ class Connection implements ConnectionBridge
         $querySent = false;
 
         try {
-            if ($cmd->type === CommandRequest::TYPE_PING) {
-                $healthy = pg_connection_status($this->ctx->connection) === PGSQL_CONNECTION_OK;
-                $this->finishCommand(
-                    $healthy ? null : new ConnectionException('Ping failed. Connection is unhealthy.'),
-                    $healthy ? true : null,
-                );
-
-                return;
-            }
-
-            [$sql, $params] = QueryParser::parse($cmd->sql, $cmd->params);
-            $params = $this->normalizeParams($params);
-
-            // For streaming without chunked-rows support, use server-side cursors
-            // so PostgreSQL only transmits one batch at a time.
-            if ($cmd->type === CommandRequest::TYPE_STREAM && ! function_exists('pg_set_chunked_rows_size')) {
-                $cmd->context->setResumeCallback($this->streamHandler->resume(...));
-                $this->cursorHandler->init($sql, $params);
-
-                return;
-            }
-
-            $sent = $params === []
-                ? @pg_send_query($this->ctx->connection, $sql)
-                : @pg_send_query_params($this->ctx->connection, $sql, $params);
-
-            if (! $sent) {
-                throw new QueryException('Failed to send query: ' . pg_last_error($this->ctx->connection));
-            }
-
-            $querySent = true;
-
-            if ($cmd->type === CommandRequest::TYPE_STREAM) {
-                $cmd->context->setResumeCallback($this->streamHandler->resume(...));
-                // pg_set_chunked_rows_size is guaranteed available here (checked above).
-                @pg_set_chunked_rows_size($this->ctx->connection, $cmd->context->bufferSize);
-            }
-
-            $this->addQueryReadWatcher();
-
+            match ($cmd->type) {
+                CommandRequest::TYPE_PING => $this->processPing(),
+                CommandRequest::TYPE_PREPARE => $querySent = $this->processPrepare($cmd),
+                CommandRequest::TYPE_EXECUTE => $querySent = $this->processExecute($cmd),
+                CommandRequest::TYPE_EXECUTE_STREAM => $querySent = $this->processExecuteStream($cmd),
+                CommandRequest::TYPE_STREAM => $querySent = $this->processStream($cmd),
+                default => $querySent = $this->processQuery($cmd),
+            };
         } catch (Throwable $e) {
             if ($querySent && $this->ctx->connection !== null) {
                 @pg_cancel_query($this->ctx->connection);
             }
             $this->finishCommand($e);
         }
+    }
+
+    private function processPing(): void
+    {
+        $healthy = pg_connection_status($this->ctx->connection) === PGSQL_CONNECTION_OK;
+        $this->finishCommand(
+            $healthy ? null : new ConnectionException('Ping failed. Connection is unhealthy.'),
+            $healthy ? true : null,
+        );
+    }
+
+    private function processPrepare(CommandRequest $cmd): bool
+    {
+        $sent = @pg_send_prepare($this->ctx->connection, 'stmt_' . $this->stmtCounter, $cmd->sql);
+
+        if (! $sent) {
+            throw new QueryException('Failed to send PREPARE: ' . pg_last_error($this->ctx->connection));
+        }
+
+        $this->addQueryReadWatcher();
+
+        return true;
+    }
+
+    private function processExecute(CommandRequest $cmd): bool
+    {
+        $sent = @pg_send_execute($this->ctx->connection, $cmd->sql, $this->normalizeParams($cmd->params));
+
+        if (! $sent) {
+            throw new QueryException('Failed to send EXECUTE: ' . pg_last_error($this->ctx->connection));
+        }
+
+        $this->addQueryReadWatcher();
+
+        return true;
+    }
+
+    private function processExecuteStream(CommandRequest $cmd): bool
+    {
+        /** @var RowStream $stream */
+        $stream = $cmd->context;
+        $stream->setResumeCallback($this->streamHandler->resume(...));
+
+        $sent = @pg_send_execute($this->ctx->connection, $cmd->sql, $this->normalizeParams($cmd->params));
+
+        if (! $sent) {
+            throw new QueryException('Failed to send EXECUTE (stream): ' . pg_last_error($this->ctx->connection));
+        }
+
+        if (function_exists('pg_set_chunked_rows_size')) {
+            @pg_set_chunked_rows_size($this->ctx->connection, $stream->bufferSize);
+        }
+
+        $this->addQueryReadWatcher();
+
+        return true;
+    }
+
+    private function processStream(CommandRequest $cmd): bool
+    {
+        /** @var RowStream $stream */
+        $stream = $cmd->context;
+        $stream->setResumeCallback($this->streamHandler->resume(...));
+
+        if (! function_exists('pg_set_chunked_rows_size')) {
+            $this->cursorHandler->init($cmd->sql, []);
+
+            return false;
+        }
+
+        $sent = @pg_send_query($this->ctx->connection, $cmd->sql);
+
+        if (! $sent) {
+            throw new QueryException('Failed to send query: ' . pg_last_error($this->ctx->connection));
+        }
+
+        @pg_set_chunked_rows_size($this->ctx->connection, $stream->bufferSize);
+        $this->addQueryReadWatcher();
+
+        return true;
+    }
+
+    private function processQuery(CommandRequest $cmd): bool
+    {
+        $sent = @pg_send_query($this->ctx->connection, $cmd->sql);
+
+        if (! $sent) {
+            throw new QueryException('Failed to send query: ' . pg_last_error($this->ctx->connection));
+        }
+
+        $this->addQueryReadWatcher();
+
+        return true;
     }
 
     public function addQueryReadWatcher(): void
@@ -332,7 +486,6 @@ class Connection implements ConnectionBridge
         $this->queryResultHandler->drain();
     }
 
-
     private function enqueueCommand(
         string $type,
         string $sql = '',
@@ -347,7 +500,7 @@ class Connection implements ConnectionBridge
         $command = new CommandRequest($type, $promise, $sql, $params, $context);
         $this->ctx->commandQueue->enqueue($command);
 
-        $promise->onCancel(function () use ($command) {
+        $promise->onCancel(function () use ($command): void {
             if ($this->ctx->currentCommand === $command) {
                 if ($this->config->enableServerSideCancellation && $this->ctx->connection !== null) {
                     @pg_cancel_query($this->ctx->connection);

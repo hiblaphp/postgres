@@ -12,27 +12,18 @@ use Hibla\Sql\Exceptions\QueryException;
 final class QueryParser
 {
     /**
-     * Converts `?` placeholders to PostgreSQL `$1, $2` format.
+     * Converts `?` placeholders to PostgreSQL `$1, $2, …` format and
+     * returns the number of parameters found.
+     *
+     * Used at PREPARE time, before any parameters are bound.
      * Skips question marks inside string literals (single/double quotes).
      *
-     * @return array{0: string, 1: array<int, mixed>} [parsedSql, indexedParams]
+     * @return array{0: string, 1: int} [convertedSql, paramCount]
      */
-    public static function parse(string $sql, array $params): array
+    public static function parsePlaceholders(string $sql): array
     {
-        if ($params === []) {
-            return[$sql, []];
-        }
-
-        $indexedParams = array_values($params);
-        $hasDollar = preg_match('/\$\d+/', $sql) === 1;
-        $hasQuestion = str_contains($sql, '?');
-
-        if ($hasDollar && $hasQuestion) {
-            throw new QueryException('Cannot mix ? and $n placeholder formats in the same query');
-        }
-
-        if ($hasDollar || ! $hasQuestion) {
-            return [$sql, $indexedParams];
+        if (! str_contains($sql, '?')) {
+            return [$sql, 0];
         }
 
         $count = 0;
@@ -71,8 +62,7 @@ final class QueryParser
             }
 
             if ($char === '?' && ! $inSingleQuote && ! $inDoubleQuote) {
-                $count++;
-                $result .= '$' . $count;
+                $result .= '$' . (++$count);
 
                 continue;
             }
@@ -80,6 +70,35 @@ final class QueryParser
             $result .= $char;
         }
 
-        return[$result, $indexedParams];
+        return [$result, $count];
+    }
+
+    /**
+     * Converts `?` placeholders to PostgreSQL `$1, $2` format when executing
+     * a plain (non-prepared) parameterised query via pg_send_query_params().
+     *
+     * @return array{0: string, 1: array<int, mixed>} [parsedSql, indexedParams]
+     */
+    public static function parse(string $sql, array $params): array
+    {
+        if ($params === []) {
+            return [$sql, []];
+        }
+
+        $indexedParams = array_values($params);
+        $hasDollar = preg_match('/\$\d+/', $sql) === 1;
+        $hasQuestion = str_contains($sql, '?');
+
+        if ($hasDollar && $hasQuestion) {
+            throw new QueryException('Cannot mix ? and $n placeholder formats in the same query');
+        }
+
+        if ($hasDollar || ! $hasQuestion) {
+            return [$sql, $indexedParams];
+        }
+
+        [$converted] = self::parsePlaceholders($sql);
+
+        return [$converted, $indexedParams];
     }
 }

@@ -17,20 +17,23 @@ final class CommandRequest
     public const string TYPE_STREAM = 'stream';
     public const string TYPE_PING = 'ping';
     public const string TYPE_RESET = 'reset';
+    public const string TYPE_PREPARE = 'prepare';
+    public const string TYPE_EXECUTE = 'execute';
+    public const string TYPE_EXECUTE_STREAM = 'execute_stream';
 
     /**
-     * @param string $type The type of command
-     * @param Promise<mixed> $promise The promise to resolve/reject
-     * @param string $sql The SQL query string
-     * @param array<int, mixed> $params Parameters for the query
-     * @param mixed $context Additional context (e.g., RowStream for streaming)
+     * @param string $type One of the TYPE_* constants.
+     * @param Promise<mixed> $promise Resolved/rejected when the command completes.
+     * @param string $sql SQL string (query/prepare) or statement name (execute).
+     * @param array<int, mixed> $params Bound parameters (execute / execute_stream only).
+     * @param mixed $context RowStream for stream commands; factory closure for prepare.
      */
     public function __construct(
-        public readonly string $type,
+        public readonly string  $type,
         public readonly Promise $promise,
-        public readonly string $sql = '',
-        public readonly array $params = [],
-        public readonly mixed $context = null,
+        public readonly string  $sql = '',
+        public readonly array   $params = [],
+        public readonly mixed   $context = null,
     ) {
     }
 }

@@ -37,10 +37,16 @@ class RowStream implements PgSqlRowStream
      */
     private ?\Closure $resumeCallback = null;
 
+    /**
+     * @inheritDoc
+     */
     public int $columnCount {
-        get => count($this->columnNames);
+        get => \count($this->columnNames);
     }
 
+    /**
+     * @inheritDoc
+     */
     public array $columns {
         get => $this->columnNames;
     }

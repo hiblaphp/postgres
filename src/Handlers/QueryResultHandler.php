@@ -14,18 +14,13 @@ use Hibla\Sql\Exceptions\QueryException;
 
 /**
  * @internal Consumes query results from libpq's buffer.
- *
- * handle()  — Event Loop entry point; routes to cursor or drain mode.
- * drain()   — Tight loop that pulls results until the buffer is empty or
- *             the consumer signals backpressure. Public so StreamHandler
- *             can call it on resume in chunked mode.
  */
 final class QueryResultHandler
 {
     public function __construct(
         private readonly ConnectionContext $ctx,
-        private readonly ConnectionBridge $bridge,
-        private readonly CursorHandler $cursorHandler,
+        private readonly ConnectionBridge  $bridge,
+        private readonly CursorHandler     $cursorHandler,
     ) {
     }
 
@@ -42,8 +37,6 @@ final class QueryResultHandler
             return;
         }
 
-        // Route to the appropriate handler based on whether we are running in
-        // cursor mode (server-side batches) or chunked/standard mode.
         if ($this->ctx->cursor->phase !== CursorPhase::None) {
             $this->cursorHandler->step();
         } else {
@@ -57,16 +50,16 @@ final class QueryResultHandler
      */
     public function drain(): void
     {
+        $isStream = $this->ctx->currentCommand?->type === CommandRequest::TYPE_STREAM
+                 || $this->ctx->currentCommand?->type === CommandRequest::TYPE_EXECUTE_STREAM;
+
         while (! @pg_connection_busy($this->ctx->connection)) {
 
-            // BACKPRESSURE: stop draining if the consumer's buffer is full.
-            // pauseStream() removes the read watcher; resumeStream() re-enters here.
-            if ($this->ctx->currentCommand?->type === CommandRequest::TYPE_STREAM) {
-                if ($this->ctx->currentCommand->context->isFull()) {
-                    $this->bridge->pauseStream();
+            // Backpressure: pause until the consumer drains below half-capacity.
+            if ($isStream && $this->ctx->currentCommand->context->isFull()) {
+                $this->bridge->pauseStream();
 
-                    return;
-                }
+                return;
             }
 
             $res = @pg_get_result($this->ctx->connection);
@@ -79,7 +72,7 @@ final class QueryResultHandler
                     return;
                 }
 
-                if ($this->ctx->currentCommand?->type === CommandRequest::TYPE_STREAM) {
+                if ($isStream) {
                     $this->ctx->currentCommand->context->complete();
                     $this->bridge->finishCommand(null, null);
                 } else {
@@ -99,7 +92,7 @@ final class QueryResultHandler
                 continue; // Keep draining so libpq's buffer is fully flushed
             }
 
-            if ($this->ctx->currentCommand?->type === CommandRequest::TYPE_STREAM) {
+            if ($isStream) {
                 $isChunk = defined('PGSQL_TUPLES_CHUNK') && $status === PGSQL_TUPLES_CHUNK;
                 $isSingle = defined('PGSQL_SINGLE_TUPLE') && $status === PGSQL_SINGLE_TUPLE;
                 $isOk = $status === PGSQL_TUPLES_OK;
@@ -115,9 +108,7 @@ final class QueryResultHandler
             }
         }
 
-        // Server still sending data. Re-arm the watcher if it was removed
-        // (e.g., by a resume → re-pause cycle) so we get called again when
-        // the next chunk arrives.
+        // Server still sending — re-arm watcher if a resume/pause cycle removed it.
         if (! $this->ctx->isStreamPaused
             && $this->ctx->queryWatcherId === null
             && $this->ctx->currentCommand !== null
@@ -128,6 +119,18 @@ final class QueryResultHandler
 
     private function processAccumulatedResults(): void
     {
+        $cmd = $this->ctx->currentCommand;
+
+        if ($cmd?->type === CommandRequest::TYPE_PREPARE) {
+            // The factory closure stored in context creates a PreparedStatement
+            // bound to the connection, without QueryResultHandler needing to
+            // import the class directly.
+            $stmt = ($cmd->context)();
+            $this->bridge->finishCommand(null, $stmt);
+
+            return;
+        }
+
         $res = end($this->ctx->accumulatedResults);
 
         if ($res === false) {

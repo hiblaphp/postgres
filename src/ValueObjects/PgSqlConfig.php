@@ -31,7 +31,7 @@ final readonly class PgSqlConfig
         public int $connectTimeout = 10,
         public string $applicationName = 'hibla_pgsql',
         public float $killTimeoutSeconds = self::DEFAULT_KILL_TIMEOUT_SECONDS,
-        public bool $enableServerSideCancellation = true,
+        public bool $enableServerSideCancellation = false,
         public bool $resetConnection = false,
     ) {
         if ($this->killTimeoutSeconds <= 0) {
@@ -63,9 +63,9 @@ final readonly class PgSqlConfig
             killTimeoutSeconds: is_numeric($config['kill_timeout_seconds'] ?? self::DEFAULT_KILL_TIMEOUT_SECONDS)
                 ? (float) ($config['kill_timeout_seconds'] ?? self::DEFAULT_KILL_TIMEOUT_SECONDS)
                 : self::DEFAULT_KILL_TIMEOUT_SECONDS,
-            enableServerSideCancellation: \is_scalar($config['enable_server_side_cancellation'] ?? true)
-                ? (bool) ($config['enable_server_side_cancellation'] ?? true)
-                : true,
+            enableServerSideCancellation: \is_scalar($config['enable_server_side_cancellation'] ?? false)
+                ? (bool) ($config['enable_server_side_cancellation'] ?? false)
+                : false,
             resetConnection: \is_scalar($config['reset_connection'] ?? false)
                 ? (bool) ($config['reset_connection'] ?? false)
                 : false,
@@ -103,7 +103,9 @@ final readonly class PgSqlConfig
             connectTimeout: isset($query['connect_timeout']) ? (int) $query['connect_timeout'] : 10,
             applicationName: isset($query['application_name']) && \is_string($query['application_name']) ? $query['application_name'] : 'hibla_pgsql',
             killTimeoutSeconds: isset($query['kill_timeout_seconds']) ? (float) $query['kill_timeout_seconds'] : self::DEFAULT_KILL_TIMEOUT_SECONDS,
-            enableServerSideCancellation: isset($query['enable_server_side_cancellation']) ? filter_var($query['enable_server_side_cancellation'], FILTER_VALIDATE_BOOLEAN) : true,
+            enableServerSideCancellation: isset($query['enable_server_side_cancellation'])
+                ? filter_var($query['enable_server_side_cancellation'], FILTER_VALIDATE_BOOLEAN)
+                : false,
             resetConnection: isset($query['reset_connection']) ? filter_var($query['reset_connection'], FILTER_VALIDATE_BOOLEAN) : false,
         );
     }
