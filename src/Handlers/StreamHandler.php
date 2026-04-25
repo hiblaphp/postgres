@@ -20,9 +20,9 @@ use Hibla\Postgres\Internals\ConnectionContext;
 final class StreamHandler
 {
     public function __construct(
-        private readonly ConnectionContext  $ctx,
-        private readonly ConnectionBridge   $bridge,
-        private readonly CursorHandler      $cursorHandler,
+        private readonly ConnectionContext $ctx,
+        private readonly ConnectionBridge $bridge,
+        private readonly CursorHandler $cursorHandler,
         private readonly QueryResultHandler $queryResultHandler,
     ) {
     }

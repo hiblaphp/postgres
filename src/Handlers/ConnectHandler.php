@@ -21,7 +21,7 @@ final class ConnectHandler
 {
     public function __construct(
         private readonly ConnectionContext $ctx,
-        private readonly ConnectionBridge  $bridge,
+        private readonly ConnectionBridge $bridge,
     ) {
     }
 

@@ -57,7 +57,6 @@ class Connection implements ConnectionBridge
         return (new self($config))->connect();
     }
 
-    // ── Public API ────────────────────────────────────────────────────────────
 
     public function connect(): PromiseInterface
     {

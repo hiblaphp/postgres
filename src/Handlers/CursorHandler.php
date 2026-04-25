@@ -25,7 +25,7 @@ final class CursorHandler
 {
     public function __construct(
         private readonly ConnectionContext $ctx,
-        private readonly ConnectionBridge  $bridge,
+        private readonly ConnectionBridge $bridge,
     ) {
     }
 
@@ -212,8 +212,6 @@ final class CursorHandler
         $this->ctx->cursor->error = null;
         $this->bridge->finishCommand($error);
     }
-
-    // ── Dispatch helpers ─────────────────────────────────────────────────────
 
     private function sendDeclare(): bool
     {

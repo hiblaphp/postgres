@@ -24,8 +24,8 @@ final class QueryResultHandler
 {
     public function __construct(
         private readonly ConnectionContext $ctx,
-        private readonly ConnectionBridge  $bridge,
-        private readonly CursorHandler     $cursorHandler,
+        private readonly ConnectionBridge $bridge,
+        private readonly CursorHandler $cursorHandler,
     ) {
     }
 
@@ -125,8 +125,6 @@ final class QueryResultHandler
             $this->bridge->addQueryReadWatcher();
         }
     }
-
-    // ── Result assembly ───────────────────────────────────────────────────────
 
     private function processAccumulatedResults(): void
     {
