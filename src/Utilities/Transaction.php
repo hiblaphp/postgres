@@ -33,8 +33,9 @@ final class Transaction
     /**
      * Executes a SELECT query and returns all matching rows.
      *
-     * @param  string  $sql  SQL query with optional parameter placeholders ($1, $2, etc.)
-     * @param  array<int, mixed>  $params  Parameter values for prepared statement
+     * @param string $sql SQL query with optional parameter placeholders ($1, $2, etc.)
+     * @param array<int, mixed> $params Parameter values for prepared statement
+     *
      * @return array<int, array<string, mixed>> Array of associative arrays
      */
     public function query(string $sql, array $params = []): array
@@ -51,8 +52,9 @@ final class Transaction
     /**
      * Executes a SELECT query and returns the first matching row.
      *
-     * @param  string  $sql  SQL query with optional parameter placeholders ($1, $2, etc.)
-     * @param  array<int, mixed>  $params  Parameter values for prepared statement
+     * @param string $sql SQL query with optional parameter placeholders ($1, $2, etc.)
+     * @param array<int, mixed> $params Parameter values for prepared statement
+     *
      * @return array<string, mixed>|null Associative array or null if no rows
      */
     public function fetchOne(string $sql, array $params = []): ?array
@@ -69,8 +71,9 @@ final class Transaction
     /**
      * Executes an INSERT, UPDATE, or DELETE statement and returns affected row count.
      *
-     * @param  string  $sql  SQL statement with optional parameter placeholders ($1, $2, etc.)
-     * @param  array<int, mixed>  $params  Parameter values for prepared statement
+     * @param string $sql SQL statement with optional parameter placeholders ($1, $2, etc.)
+     * @param array<int, mixed> $params Parameter values for prepared statement
+     *
      * @return int Number of affected rows
      */
     public function execute(string $sql, array $params = []): int
@@ -87,8 +90,9 @@ final class Transaction
     /**
      * Executes a query and returns a single column value from the first row.
      *
-     * @param  string  $sql  SQL query with optional parameter placeholders ($1, $2, etc.)
-     * @param  array<int, mixed>  $params  Parameter values for prepared statement
+     * @param string $sql SQL query with optional parameter placeholders ($1, $2, etc.)
+     * @param array<int, mixed> $params Parameter values for prepared statement
+     *
      * @return mixed Scalar value or null if no rows
      */
     public function fetchValue(string $sql, array $params = []): mixed
@@ -107,7 +111,8 @@ final class Transaction
      * The callback will be executed after the transaction successfully commits
      * but before the transaction() method returns.
      *
-     * @param  callable(): void  $callback  Callback to execute on commit
+     * @param callable(): void $callback Callback to execute on commit
+     *
      * @return void
      */
     public function onCommit(callable $callback): void
@@ -121,7 +126,8 @@ final class Transaction
      * The callback will be executed after the transaction is rolled back
      * but before the exception is re-thrown.
      *
-     * @param  callable(): void  $callback  Callback to execute on rollback
+     * @param callable(): void $callback Callback to execute on rollback
+     *
      * @return void
      */
     public function onRollback(callable $callback): void

@@ -4,17 +4,14 @@ declare(strict_types=1);
 
 namespace Hibla\Postgres\Utilities;
 
-use function Hibla\async;
-
 use Hibla\Async\Timer;
-
-use function Hibla\await;
-
 use Hibla\Postgres\Exceptions\QueryException;
 use Hibla\Promise\Interfaces\PromiseInterface;
-
 use PgSql\Connection;
 use PgSql\Result;
+
+use function Hibla\async;
+use function Hibla\await;
 
 /**
  * Handles asynchronous query execution and result processing.
@@ -31,10 +28,11 @@ final class QueryExecutor
      * query sending, result waiting, and result processing.
      * Automatically converts ? placeholders to PostgreSQL $n format if needed.
      *
-     * @param  Connection  $connection  PostgreSQL connection
-     * @param  string  $sql  SQL query/statement
-     * @param  array<int, mixed>  $params  Query parameters
-     * @param  string  $resultType  Type of result processing ('fetchAll', 'fetchOne', 'execute', 'fetchValue')
+     * @param Connection $connection PostgreSQL connection
+     * @param string $sql SQL query/statement
+     * @param array<int, mixed> $params Query parameters
+     * @param string $resultType Type of result processing ('fetchAll', 'fetchOne', 'execute', 'fetchValue')
+     *
      * @return PromiseInterface<mixed> Promise resolving to processed result
      *
      * @throws QueryException If query execution fails
@@ -61,7 +59,8 @@ final class QueryExecutor
      * If the SQL already uses $n placeholders, it is returned unchanged.
      * Skips question marks inside string literals (single quotes).
      *
-     * @param  string  $sql  SQL with ? placeholders or $n placeholders
+     * @param string $sql SQL with ? placeholders or $n placeholders
+     *
      * @return string SQL with $n placeholders
      *
      * @throws QueryException If mixing ? and $n placeholders
@@ -147,9 +146,10 @@ final class QueryExecutor
     /**
      * Sends the query to the PostgreSQL connection.
      *
-     * @param  Connection  $connection  PostgreSQL connection
-     * @param  string  $sql  SQL query with $n placeholders
-     * @param  array<int, mixed>  $params  Query parameters
+     * @param Connection $connection PostgreSQL connection
+     * @param string $sql SQL query with $n placeholders
+     * @param array<int, mixed> $params Query parameters
+     *
      * @return void
      *
      * @throws QueryException If query send fails
@@ -184,7 +184,8 @@ final class QueryExecutor
      * (exponential backoff) until the query completes. This provides
      * efficient non-blocking behavior without busy-waiting.
      *
-     * @param  Connection  $connection  PostgreSQL connection
+     * @param Connection $connection PostgreSQL connection
+     *
      * @return PromiseInterface<Result|false> Promise resolving to query result
      */
     private function waitForAsyncCompletion(Connection $connection): PromiseInterface
@@ -208,11 +209,12 @@ final class QueryExecutor
      * This method converts the raw PostgreSQL result into the appropriate
      * PHP data structure based on the requested result type.
      *
-     * @param  Result|false  $result  PostgreSQL query result
-     * @param  string  $resultType  Type of result processing
-     * @param  Connection  $connection  PostgreSQL connection for error reporting
-     * @param  string  $sql  The SQL query for error context
-     * @param  array<int, mixed>  $params  The query parameters for error context
+     * @param Result|false $result PostgreSQL query result
+     * @param string $resultType Type of result processing
+     * @param Connection $connection PostgreSQL connection for error reporting
+     * @param string $sql The SQL query for error context
+     * @param array<int, mixed> $params The query parameters for error context
+     *
      * @return mixed Processed result based on result type
      *
      * @throws QueryException If result is false or processing fails
@@ -264,7 +266,8 @@ final class QueryExecutor
      * Converts the PostgreSQL result into an array of associative arrays,
      * where each array represents a row with column names as keys.
      *
-     * @param  Result  $result  PostgreSQL query result
+     * @param Result $result PostgreSQL query result
+     *
      * @return array<int, array<string, mixed>> Array of associative arrays
      */
     private function handleFetchAll(Result $result): array
@@ -281,7 +284,8 @@ final class QueryExecutor
      * Converts the first row of the PostgreSQL result into an associative array
      * with column names as keys. Returns null if no rows exist.
      *
-     * @param  Result  $result  PostgreSQL query result
+     * @param Result $result PostgreSQL query result
+     *
      * @return array<int|string, string|null>|null Associative array or null if no rows
      */
     private function handleFetchOne(Result $result): ?array
@@ -301,7 +305,8 @@ final class QueryExecutor
      * Extracts the first column of the first row from the result set.
      * Useful for aggregate queries like COUNT, SUM, MAX, etc.
      *
-     * @param  Result  $result  PostgreSQL query result
+     * @param Result $result PostgreSQL query result
+     *
      * @return mixed Scalar value or null if no rows
      */
     private function handleFetchValue(Result $result): mixed
@@ -320,7 +325,8 @@ final class QueryExecutor
      *
      * Returns the count of rows affected by an INSERT, UPDATE, or DELETE statement.
      *
-     * @param  Result  $result  PostgreSQL query result
+     * @param Result $result PostgreSQL query result
+     *
      * @return int Number of affected rows
      */
     private function handleExecute(Result $result): int
