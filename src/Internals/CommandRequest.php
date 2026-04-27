@@ -29,11 +29,11 @@ final class CommandRequest
      * @param mixed $context RowStream for stream commands; factory closure for prepare.
      */
     public function __construct(
-        public readonly string  $type,
+        public readonly string $type,
         public readonly Promise $promise,
-        public readonly string  $sql = '',
-        public readonly array   $params = [],
-        public readonly mixed   $context = null,
+        public readonly string $sql = '',
+        public readonly array $params = [],
+        public readonly mixed $context = null,
     ) {
     }
 }

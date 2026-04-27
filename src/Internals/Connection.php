@@ -27,8 +27,8 @@ use Throwable;
  *   - Implements ConnectionBridge so handlers can call back into lifecycle
  *     methods without a circular class dependency.
  *   - Delegates all I/O and protocol logic to the four handler classes.
- * 
- * 
+ *
+ *
  *
  * CANCELLATION BEHAVIOUR (ext-pgsql limitation)
  * -----------------------------------------------
@@ -59,15 +59,15 @@ use Throwable;
  */
 class Connection implements ConnectionBridge
 {
-    private readonly ConnectionContext  $ctx;
+    private readonly ConnectionContext $ctx;
 
-    private readonly ConnectHandler     $connectHandler;
+    private readonly ConnectHandler $connectHandler;
 
-    private readonly CursorHandler      $cursorHandler;
+    private readonly CursorHandler $cursorHandler;
 
     private readonly QueryResultHandler $queryResultHandler;
 
-    private readonly StreamHandler      $streamHandler;
+    private readonly StreamHandler $streamHandler;
 
     private readonly PgSqlConfig $config;
 
@@ -184,7 +184,7 @@ class Connection implements ConnectionBridge
         // PreparedStatement after the server acknowledges the PREPARE without
         // needing a direct dependency on this class.
         $connection = $this;
-        $factory = static fn() => new PreparedStatement($connection, $name);
+        $factory = static fn () => new PreparedStatement($connection, $name);
 
         return $this->enqueueCommand(CommandRequest::TYPE_PREPARE, $parsedSql, [], $factory);
     }
@@ -251,7 +251,7 @@ class Connection implements ConnectionBridge
             || $status === PGSQL_TRANSACTION_INERROR
         ) {
             return $this->enqueueCommand(CommandRequest::TYPE_QUERY, 'ROLLBACK')
-                ->then(fn() => $this->enqueueCommand(CommandRequest::TYPE_RESET, 'DISCARD ALL'))
+                ->then(fn () => $this->enqueueCommand(CommandRequest::TYPE_RESET, 'DISCARD ALL'))
             ;
         }
 
@@ -513,8 +513,8 @@ class Connection implements ConnectionBridge
     private function enqueueCommand(
         string $type,
         string $sql = '',
-        array  $params = [],
-        mixed  $context = null,
+        array $params = [],
+        mixed $context = null,
     ): PromiseInterface {
         if ($this->ctx->state === ConnectionState::CLOSED) {
             return Promise::rejected(new ConnectionException('Connection is closed'));
@@ -556,7 +556,7 @@ class Connection implements ConnectionBridge
     private function normalizeParams(array $params): array
     {
         return array_map(
-            static fn(mixed $p) => \is_bool($p) ? ($p ? '1' : '0') : $p,
+            static fn (mixed $p) => \is_bool($p) ? ($p ? '1' : '0') : $p,
             $params
         );
     }

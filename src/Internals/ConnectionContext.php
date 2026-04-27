@@ -37,19 +37,19 @@ final class ConnectionContext
 
     public ?CommandRequest $currentCommand = null;
 
-    public ?Promise        $connectPromise = null;
+    public ?Promise $connectPromise = null;
 
-    public ?string         $pollWatcherId = null;
+    public ?string $pollWatcherId = null;
 
-    public ?string         $pollWatcherType = null;
+    public ?string $pollWatcherType = null;
 
-    public ?string         $queryWatcherId = null;
+    public ?string $queryWatcherId = null;
 
-    public array           $accumulatedResults = [];
+    public array $accumulatedResults = [];
 
-    public ?Throwable      $queryError = null;
+    public ?Throwable $queryError = null;
 
-    public bool            $isStreamPaused = false;
+    public bool $isStreamPaused = false;
 
     public readonly CursorState $cursor;
 

@@ -26,7 +26,7 @@ class PreparedStatement implements PreparedStatementInterface
      */
     public function __construct(
         private readonly Connection $connection,
-        public readonly string      $name,
+        public readonly string $name,
     ) {
     }
 

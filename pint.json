@@ -16,6 +16,13 @@
                 "use_trait"
             ]
         },
+        "type_declaration_spaces": {
+            "elements": [
+                "property",
+                "function",
+                "constant"
+            ]
+        },
         "blank_line_between_import_groups": true,
         "no_unused_imports": true,
         "declare_strict_types": true,
