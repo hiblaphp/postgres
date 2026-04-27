@@ -178,7 +178,7 @@ class Connection implements ConnectionBridge
     {
         $name = 'stmt_' . (++$this->stmtCounter);
 
-        [$parsedSql] = QueryParser::parsePlaceholders($sql);
+        [$parsedSql] = ParamParser::parsePlaceholders($sql);
 
         // Pass a factory closure so QueryResultHandler can construct the
         // PreparedStatement after the server acknowledges the PREPARE without

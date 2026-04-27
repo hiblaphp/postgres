@@ -9,7 +9,7 @@ use Hibla\Sql\Exceptions\QueryException;
 /**
  * @internal
  */
-final class QueryParser
+final class ParamParser
 {
     /**
      * Converts `?` placeholders to PostgreSQL `$1, $2, …` format and
