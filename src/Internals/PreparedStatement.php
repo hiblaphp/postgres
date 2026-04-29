@@ -71,7 +71,7 @@ class PreparedStatement implements PreparedStatementInterface
     public function close(): PromiseInterface
     {
         if ($this->isClosed) {
-            return Promise::resolved(null);
+            return Promise::resolved();
         }
 
         $this->isClosed = true;

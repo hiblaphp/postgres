@@ -7,7 +7,9 @@ namespace Hibla\Postgres\Handlers;
 use Hibla\Postgres\Enums\CursorPhase;
 use Hibla\Postgres\Interfaces\ConnectionBridge;
 use Hibla\Postgres\Internals\ConnectionContext;
+use Hibla\Postgres\Traits\HandlerHelperTrait;
 use Hibla\Sql\Exceptions\QueryException;
+use PgSql\Result as PgSqlResult;
 use Throwable;
 
 /**
@@ -23,6 +25,8 @@ use Throwable;
  */
 final class CursorHandler
 {
+    use HandlerHelperTrait;
+
     public function __construct(
         private readonly ConnectionContext $ctx,
         private readonly ConnectionBridge $bridge,
@@ -33,6 +37,8 @@ final class CursorHandler
      * Kicks off the cursor lifecycle for a new streaming command.
      * Sends BEGIN first when we are not already inside a transaction,
      * otherwise goes straight to DECLARE.
+     *
+     * @param array<int|string, mixed> $params
      */
     public function init(string $sql, array $params): void
     {
@@ -41,9 +47,11 @@ final class CursorHandler
         $cursor->params = $params;
         $cursor->ownsTransaction = ($this->bridge->getTransactionStatus() === PGSQL_TRANSACTION_IDLE);
 
+        $conn = $this->getTypedConnection();
+
         if ($cursor->ownsTransaction) {
             $cursor->phase = CursorPhase::Begin;
-            $sent = (bool) @pg_send_query($this->ctx->connection, 'BEGIN');
+            $sent = (bool) @pg_send_query($conn, 'BEGIN');
         } else {
             $cursor->phase = CursorPhase::Declare;
             $sent = $this->sendDeclare();
@@ -52,7 +60,7 @@ final class CursorHandler
         if (! $sent) {
             $cursor->phase = CursorPhase::None;
             $this->bridge->finishCommand(new QueryException(
-                'Failed to init cursor stream: ' . pg_last_error($this->ctx->connection)
+                'Failed to init cursor stream: ' . pg_last_error($conn)
             ));
 
             return;
@@ -67,26 +75,29 @@ final class CursorHandler
      */
     public function step(): void
     {
-        if (@pg_connection_busy($this->ctx->connection)) {
-            return; // More data still arriving; watcher will fire again
+        $conn = $this->getTypedConnection();
+
+        if (@pg_connection_busy($conn)) {
+            return;
         }
 
-        $res = @pg_get_result($this->ctx->connection);
+        $res = @pg_get_result($conn);
 
         if ($res === false) {
-            return; // No complete result in buffer yet
+            return;
         }
 
         $status = pg_result_status($res);
         $cursor = $this->ctx->cursor;
 
-        // Any error in a non-terminal phase: surface and clean up the transaction.
         if ($status === PGSQL_FATAL_ERROR || $status === PGSQL_BAD_RESPONSE) {
-            $msg = pg_result_error($res);
+            $rawMsg = pg_result_error($res);
+            $msg = $rawMsg !== false ? $rawMsg : '';
             @pg_free_result($res);
             $error = new QueryException($msg !== '' ? $msg : 'Unknown query error');
 
-            if ($cursor->ownsTransaction
+            if (
+                $cursor->ownsTransaction
                 && $cursor->phase !== CursorPhase::Rollback
                 && $cursor->phase !== CursorPhase::Close
             ) {
@@ -114,22 +125,23 @@ final class CursorHandler
      */
     public function sendFetch(): void
     {
-        $bufferSize = $this->ctx->currentCommand->context->bufferSize;
-        $sent = @pg_send_query(
-            $this->ctx->connection,
-            "FETCH {$bufferSize} FROM {$this->ctx->cursor->name}"
+        $conn = $this->getTypedConnection();
+        $context = $this->ctx->currentStreamContext();
+
+        $sent = (bool) @pg_send_query(
+            $conn,
+            "FETCH {$context->bufferSize} FROM {$this->ctx->cursor->name}"
         );
 
         if (! $sent) {
             $this->ctx->cursor->phase = CursorPhase::None;
             $this->bridge->finishCommand(new QueryException(
-                'Failed to send FETCH: ' . pg_last_error($this->ctx->connection)
+                'Failed to send FETCH: ' . pg_last_error($conn)
             ));
 
             return;
         }
 
-        // Re-arm the read watcher if pauseStream() removed it.
         if ($this->ctx->queryWatcherId === null) {
             $this->bridge->addQueryReadWatcher();
         }
@@ -137,46 +149,45 @@ final class CursorHandler
 
     // ── Phase step handlers ───────────────────────────────────────────────────
 
-    private function stepBegin(mixed $res): void
+    private function stepBegin(PgSqlResult $res): void
     {
         @pg_free_result($res);
         $this->ctx->cursor->phase = CursorPhase::Declare;
 
         if (! $this->sendDeclare()) {
             $this->sendRollback(new QueryException(
-                'Failed to send DECLARE: ' . pg_last_error($this->ctx->connection)
+                'Failed to send DECLARE: ' . pg_last_error($this->getTypedConnection())
             ));
         }
     }
 
-    private function stepDeclare(mixed $res): void
+    private function stepDeclare(PgSqlResult $res): void
     {
         @pg_free_result($res);
         $this->ctx->cursor->phase = CursorPhase::Fetch;
         $this->sendFetch();
     }
 
-    private function stepFetch(mixed $res): void
+    private function stepFetch(PgSqlResult $res): void
     {
+        $context = $this->ctx->currentStreamContext();
         $rowCount = pg_num_rows($res);
 
         if ($rowCount > 0) {
             while ($row = pg_fetch_assoc($res)) {
-                $this->ctx->currentCommand->context->push($row);
+                $context->push($this->normalizeRow($row));
             }
         }
+
         @pg_free_result($res);
 
         if ($rowCount === 0) {
-            // Cursor exhausted — send CLOSE (+ COMMIT when we own the transaction).
             $this->sendClose();
 
             return;
         }
 
-        // BACKPRESSURE: buffer full — pause until the consumer drains below half.
-        // StreamHandler::resume() will call sendFetch() for the next batch.
-        if ($this->ctx->currentCommand->context->isFull()) {
+        if ($context->isFull()) {
             $this->bridge->pauseStream();
 
             return;
@@ -185,14 +196,15 @@ final class CursorHandler
         $this->sendFetch();
     }
 
-    private function stepClose(mixed $res): void
+    private function stepClose(PgSqlResult $res): void
     {
+        $conn = $this->getTypedConnection();
+        $context = $this->ctx->currentStreamContext();
+
         @pg_free_result($res);
 
-        // When "CLOSE name; COMMIT" was sent as one round-trip, drain the COMMIT
-        // acknowledgement from the buffer before we declare the command done.
-        while (! @pg_connection_busy($this->ctx->connection)) {
-            $extra = @pg_get_result($this->ctx->connection);
+        while (! @pg_connection_busy($conn)) {
+            $extra = @pg_get_result($conn);
             if ($extra === false) {
                 break;
             }
@@ -200,11 +212,11 @@ final class CursorHandler
         }
 
         $this->ctx->cursor->phase = CursorPhase::None;
-        $this->ctx->currentCommand->context->complete();
+        $context->complete();
         $this->bridge->finishCommand(null, null);
     }
 
-    private function stepRollback(mixed $res): void
+    private function stepRollback(PgSqlResult $res): void
     {
         @pg_free_result($res);
         $error = $this->ctx->cursor->error;
@@ -215,28 +227,29 @@ final class CursorHandler
 
     private function sendDeclare(): bool
     {
+        $conn = $this->getTypedConnection();
         $cursor = $this->ctx->cursor;
         $sql = "DECLARE {$cursor->name} NO SCROLL CURSOR FOR {$cursor->sql}";
 
         return $cursor->params === []
-            ? (bool) @pg_send_query($this->ctx->connection, $sql)
-            : (bool) @pg_send_query_params($this->ctx->connection, $sql, $cursor->params);
+            ? (bool) @pg_send_query($conn, $sql)
+            : (bool) @pg_send_query_params($conn, $sql, $cursor->params);
     }
 
     private function sendClose(): void
     {
+        $conn = $this->getTypedConnection();
         $cursor = $this->ctx->cursor;
+        $context = $this->ctx->currentStreamContext();
 
-        // Bundle CLOSE + COMMIT in one round-trip when we own the transaction.
         $sql = $cursor->ownsTransaction
             ? "CLOSE {$cursor->name}; COMMIT"
             : "CLOSE {$cursor->name}";
-        $sent = @pg_send_query($this->ctx->connection, $sql);
+        $sent = (bool) @pg_send_query($conn, $sql);
 
         if (! $sent) {
-            // Best effort: mark the stream complete and move on.
             $cursor->phase = CursorPhase::None;
-            $this->ctx->currentCommand->context->complete();
+            $context->complete();
             $this->bridge->finishCommand(null, null);
 
             return;
@@ -251,9 +264,10 @@ final class CursorHandler
 
     private function sendRollback(Throwable $error): void
     {
+        $conn = $this->getTypedConnection();
         $cursor = $this->ctx->cursor;
         $cursor->error = $error;
-        $sent = @pg_send_query($this->ctx->connection, 'ROLLBACK');
+        $sent = (bool) @pg_send_query($conn, 'ROLLBACK');
 
         if (! $sent) {
             $cursor->phase = CursorPhase::None;

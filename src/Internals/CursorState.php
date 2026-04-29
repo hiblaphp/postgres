@@ -21,11 +21,14 @@ final class CursorState
 
     public string $sql = '';
 
-    public array $params = [];
-
     public bool $ownsTransaction = false;
 
     public ?Throwable $error = null;
+
+    /**
+     * @var array<int|string, mixed>
+     */
+    public array $params = [];
 
     /**
      * Resets all fields back to their defaults after a cursor command completes.

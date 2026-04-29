@@ -27,35 +27,6 @@ use Throwable;
  *   - Implements ConnectionBridge so handlers can call back into lifecycle
  *     methods without a circular class dependency.
  *   - Delegates all I/O and protocol logic to the four handler classes.
- *
- *
- *
- * CANCELLATION BEHAVIOUR (ext-pgsql limitation)
- * -----------------------------------------------
- * Due to a known limitation in PHP's ext-pgsql extension, there is no true
- * client-side-only cancellation. When a query is in progress and the connection
- * is closed, PHP's internal _close_pgsql_link() calls PQgetResult() in a loop
- * before calling PQfinish(), which blocks until the server finishes the query.
- *
- * The only way to unblock this is to send a cancel signal to the server first,
- * which pg_cancel_query() does via a separate short-lived TCP connection.
- *
- * This flag controls what happens AFTER cancellation, not whether a server
- * signal is sent:
- *
- *   true  → Cancel signal is sent and the connection is kept alive for reuse.
- *            Use this in connection pool scenarios where you want to recycle
- *            the connection after cancellation.
- *
- *   false → Cancel signal is still sent (unavoidable), but the connection is
- *           closed and discarded afterwards. Use this for single-use connections
- *           or when you do not want to reuse the connection after cancellation.
- *
- * If you need true client-side cancellation with no server interaction, consider
- * using pecl-pq instead of ext-pgsql, or set a session-level statement_timeout
- * on connect to bound query execution time on the server side.
- *
- * Reference: https://bugs.php.net/bug.php?id=79134
  */
 class Connection implements ConnectionBridge
 {
@@ -73,10 +44,19 @@ class Connection implements ConnectionBridge
 
     /**
      * Monotonically increasing counter used to generate unique statement names.
-     * Names are local to this connection, so a simple integer is sufficient.
      */
     private int $stmtCounter = 0;
 
+    /**
+     * Tracks in-flight pg_cancel_backend promises keyed by process ID (PID).
+     *
+     * @var array<int, Promise<mixed>>
+     */
+    private array $pendingCancels = [];
+
+    /**
+     * @param PgSqlConfig|array<string, mixed>|string $config
+     */
     public function __construct(PgSqlConfig|array|string $config)
     {
         $this->config = match (true) {
@@ -94,6 +74,8 @@ class Connection implements ConnectionBridge
     }
 
     /**
+     * @param PgSqlConfig|array<string, mixed>|string $config
+     *
      * @return PromiseInterface<self>
      */
     public static function create(PgSqlConfig|array|string $config): PromiseInterface
@@ -101,6 +83,9 @@ class Connection implements ConnectionBridge
         return new self($config)->connect();
     }
 
+    /**
+     * @return PromiseInterface<self>
+     */
     public function connect(): PromiseInterface
     {
         if ($this->ctx->state !== ConnectionState::DISCONNECTED) {
@@ -108,16 +93,19 @@ class Connection implements ConnectionBridge
         }
 
         $this->ctx->state = ConnectionState::CONNECTING;
-        $this->ctx->connectPromise = new Promise();
+
+        /** @var Promise<self> $connectPromise */
+        $connectPromise = new Promise();
+        $this->ctx->connectPromise = $connectPromise;
 
         error_clear_last();
 
-        $this->ctx->connection = @pg_connect(
+        $connection = @pg_connect(
             $this->config->toConnectionString(),
             PGSQL_CONNECT_ASYNC | PGSQL_CONNECT_FORCE_NEW
         );
 
-        if ($this->ctx->connection === false) {
+        if ($connection === false) {
             $error = error_get_last();
             $this->ctx->state = ConnectionState::CLOSED;
 
@@ -126,14 +114,19 @@ class Connection implements ConnectionBridge
             ));
         }
 
-        $this->ctx->socket = @pg_socket($this->ctx->connection);
+        $this->ctx->connection = $connection;
 
-        if ($this->ctx->socket === false) {
+        $socket = @pg_socket($this->ctx->connection);
+
+        if ($socket === false) {
             $this->ctx->state = ConnectionState::CLOSED;
             @pg_close($this->ctx->connection);
+            $this->ctx->connection = null;
 
             return Promise::rejected(new ConnectionException('Failed to retrieve underlying socket descriptor'));
         }
+
+        $this->ctx->socket = $socket;
 
         $this->ctx->pollWatcherId = Loop::addWriteWatcher($this->ctx->socket, $this->connectHandler->handle(...));
         $this->ctx->pollWatcherType = 'write';
@@ -149,7 +142,10 @@ class Connection implements ConnectionBridge
      */
     public function query(string $sql): PromiseInterface
     {
-        return $this->enqueueCommand(CommandRequest::TYPE_QUERY, $sql);
+        /** @var PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlResult> $promise */
+        $promise = $this->enqueueCommand(CommandRequest::TYPE_QUERY, $sql);
+
+        return $promise;
     }
 
     /**
@@ -177,13 +173,15 @@ class Connection implements ConnectionBridge
     public function prepare(string $sql): PromiseInterface
     {
         $name = 'stmt_' . (++$this->stmtCounter);
-
         [$parsedSql,, $paramNames] = ParamParser::parsePlaceholders($sql);
 
         $connection = $this;
         $factory = static fn () => new PreparedStatement($connection, $name, $paramNames);
 
-        return $this->enqueueCommand(CommandRequest::TYPE_PREPARE, $parsedSql, [], $factory);
+        /** @var PromiseInterface<PreparedStatement> $promise */
+        $promise = $this->enqueueCommand(CommandRequest::TYPE_PREPARE, $parsedSql, [], $factory);
+
+        return $promise;
     }
 
     /**
@@ -193,11 +191,14 @@ class Connection implements ConnectionBridge
      */
     public function executeStatement(PreparedStatement $stmt, array $params): PromiseInterface
     {
-        return $this->enqueueCommand(
+        /** @var PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlResult> $promise */
+        $promise = $this->enqueueCommand(
             CommandRequest::TYPE_EXECUTE,
             $stmt->name,
             $this->resolveStatementParams($stmt, $params),
         );
+
+        return $promise;
     }
 
     /**
@@ -226,10 +227,10 @@ class Connection implements ConnectionBridge
      */
     public function closeStatement(string $name): PromiseInterface
     {
-        // Statement names are generated by us (alphanumeric + underscore) so
-        // embedding directly is safe. Avoid pg_escape_identifier here
-        // because it requires a live connection resource.
-        return $this->enqueueCommand(CommandRequest::TYPE_QUERY, "DEALLOCATE {$name}");
+        /** @var PromiseInterface<void> $promise */
+        $promise = $this->enqueueCommand(CommandRequest::TYPE_QUERY, "DEALLOCATE {$name}");
+
+        return $promise;
     }
 
     /**
@@ -237,7 +238,10 @@ class Connection implements ConnectionBridge
      */
     public function ping(): PromiseInterface
     {
-        return $this->enqueueCommand(CommandRequest::TYPE_PING);
+        /** @var PromiseInterface<bool> $promise */
+        $promise = $this->enqueueCommand(CommandRequest::TYPE_PING);
+
+        return $promise;
     }
 
     /**
@@ -252,11 +256,13 @@ class Connection implements ConnectionBridge
             || $status === PGSQL_TRANSACTION_INTRANS
             || $status === PGSQL_TRANSACTION_INERROR
         ) {
+            /** @var PromiseInterface<void> */
             return $this->enqueueCommand(CommandRequest::TYPE_QUERY, 'ROLLBACK')
                 ->then(fn () => $this->enqueueCommand(CommandRequest::TYPE_RESET, 'DISCARD ALL'))
             ;
         }
 
+        /** @var PromiseInterface<void> */
         return $this->enqueueCommand(CommandRequest::TYPE_RESET, 'DISCARD ALL');
     }
 
@@ -272,13 +278,13 @@ class Connection implements ConnectionBridge
 
     public function getProcessId(): int
     {
-        return $this->ctx->connection ? pg_get_pid($this->ctx->connection) : 0;
+        return $this->ctx->connection !== null ? pg_get_pid($this->assertConnection()) : 0;
     }
 
     public function getTransactionStatus(): int
     {
-        return $this->ctx->connection
-            ? pg_transaction_status($this->ctx->connection)
+        return $this->ctx->connection !== null
+            ? pg_transaction_status($this->assertConnection())
             : PGSQL_TRANSACTION_UNKNOWN;
     }
 
@@ -288,28 +294,32 @@ class Connection implements ConnectionBridge
             return;
         }
 
+        $pid = $this->getProcessId();
+        if (
+            $this->ctx->state === ConnectionState::QUERYING
+            && $pid > 0
+            && $this->config->enableServerSideCancellation
+        ) {
+            $this->dispatchCancelBackend($pid);
+        }
+
         $this->ctx->state = ConnectionState::CLOSED;
-        $this->clearAllWatchers();
 
-        if ($this->ctx->connection !== null) {
-            @pg_close($this->ctx->connection);
-            $this->ctx->connection = null;
+        if ($this->pendingCancels !== []) {
+            $this->awaitPendingCancels()->then(
+                $this->teardown(...),
+                $this->teardown(...)
+            );
+
+            return;
         }
 
-        $exception = new ConnectionException('Connection was closed');
+        $this->teardown();
+    }
 
-        if ($this->ctx->connectPromise?->isPending()) {
-            $this->ctx->connectPromise->reject($exception);
-        }
-
-        if ($this->ctx->currentCommand !== null) {
-            $this->ctx->currentCommand->promise->reject($exception);
-            $this->ctx->currentCommand = null;
-        }
-
-        while (! $this->ctx->commandQueue->isEmpty()) {
-            $this->ctx->commandQueue->dequeue()->promise->reject($exception);
-        }
+    public function __destruct()
+    {
+        $this->close();
     }
 
     public function onConnectReady(): void
@@ -341,16 +351,23 @@ class Connection implements ConnectionBridge
 
         $this->ctx->cursor->reset();
 
-        if ($error !== null) {
-            $isStream = $cmd?->type === CommandRequest::TYPE_STREAM
-                || $cmd?->type === CommandRequest::TYPE_EXECUTE_STREAM;
+        if ($cmd === null) {
+            $this->processNextCommand();
 
-            if ($isStream && $cmd->context !== null) {
+            return;
+        }
+
+        if ($error !== null) {
+            $isStream = $cmd->type === CommandRequest::TYPE_STREAM
+                || $cmd->type === CommandRequest::TYPE_EXECUTE_STREAM;
+
+            if ($isStream && $cmd->context instanceof RowStream) {
                 $cmd->context->error($error);
             }
-            $cmd?->promise->reject($error);
+
+            $cmd->promise->reject($error);
         } else {
-            $cmd?->promise->resolve($value);
+            $cmd->promise->resolve($value);
         }
 
         $this->processNextCommand();
@@ -372,23 +389,152 @@ class Connection implements ConnectionBridge
         $this->ctx->queryError = null;
 
         $cmd = $this->ctx->currentCommand;
-        $querySent = false;
 
         try {
             match ($cmd->type) {
                 CommandRequest::TYPE_PING => $this->processPing(),
-                CommandRequest::TYPE_PREPARE => $querySent = $this->processPrepare($cmd),
-                CommandRequest::TYPE_EXECUTE => $querySent = $this->processExecute($cmd),
-                CommandRequest::TYPE_EXECUTE_STREAM => $querySent = $this->processExecuteStream($cmd),
-                CommandRequest::TYPE_STREAM => $querySent = $this->processStream($cmd),
-                default => $querySent = $this->processQuery($cmd),
+                CommandRequest::TYPE_PREPARE => $this->processPrepare($cmd),
+                CommandRequest::TYPE_EXECUTE => $this->processExecute($cmd),
+                CommandRequest::TYPE_EXECUTE_STREAM => $this->processExecuteStream($cmd),
+                CommandRequest::TYPE_STREAM => $this->processStream($cmd),
+                default => $this->processQuery($cmd),
             };
         } catch (Throwable $e) {
-            if ($querySent && $this->ctx->connection !== null) {
-                @pg_cancel_query($this->ctx->connection);
-            }
+            // The pg_send_* helpers throw *before* returning, so no query
+            // could have been dispatched at this point; nothing to cancel.
             $this->finishCommand($e);
         }
+    }
+
+    /**
+     * @param array<int, mixed> $params
+     *
+     * @return PromiseInterface<mixed>
+     */
+    private function enqueueCommand(
+        string $type,
+        string $sql = '',
+        array $params = [],
+        mixed $context = null,
+    ): PromiseInterface {
+        if ($this->ctx->state === ConnectionState::CLOSED) {
+            return Promise::rejected(new ConnectionException('Connection is closed'));
+        }
+
+        $promise = new Promise();
+        $command = new CommandRequest($type, $promise, $sql, $params, $context);
+        $this->ctx->commandQueue->enqueue($command);
+
+        $promise->onCancel(function () use ($command): void {
+            $this->handleCommandCancellation($command);
+        });
+
+        $this->processNextCommand();
+
+        return $promise;
+    }
+
+    private function handleCommandCancellation(CommandRequest $command): void
+    {
+        if ($this->removeFromQueue($command)) {
+            return;
+        }
+
+        if ($this->ctx->currentCommand === $command) {
+            $pid = $this->getProcessId();
+            if ($this->config->enableServerSideCancellation && $pid > 0 && $this->ctx->state !== ConnectionState::CLOSED) {
+                $this->dispatchCancelBackend($pid);
+            }
+        }
+    }
+
+    private function dispatchCancelBackend(int $pid): void
+    {
+        if (isset($this->pendingCancels[$pid])) {
+            return;
+        }
+
+        $cancelPromise = new Promise();
+        $this->pendingCancels[$pid] = $cancelPromise;
+
+        Loop::nextTick(function () use ($pid, $cancelPromise): void {
+            $settle = function () use ($cancelPromise, $pid): void {
+                $cancelPromise->resolve(null);
+                unset($this->pendingCancels[$pid]);
+            };
+
+            Promise::timeout(
+                Connection::create($this->config)
+                    ->then(function (Connection $killConn) use ($pid): PromiseInterface {
+                        return $killConn->query("SELECT pg_cancel_backend({$pid})")
+                            ->finally(fn () => $killConn->close())
+                        ;
+                    }),
+                $this->config->killTimeoutSeconds
+            )->then($settle, $settle);
+        });
+    }
+
+    /**
+     * @return PromiseInterface<void>
+     */
+    private function awaitPendingCancels(): PromiseInterface
+    {
+        if ($this->pendingCancels === []) {
+            /** @var PromiseInterface<void> */
+            return Promise::resolved();
+        }
+
+        /** @var PromiseInterface<void> */
+        return Promise::allSettled($this->pendingCancels)
+            ->then(function (): void {
+                $this->pendingCancels = [];
+            })
+        ;
+    }
+
+    private function teardown(): void
+    {
+        $this->clearAllWatchers();
+
+        if ($this->ctx->connection !== null) {
+            @pg_close($this->assertConnection());
+            $this->ctx->connection = null;
+        }
+
+        $exception = new ConnectionException('Connection was closed');
+
+        if ($this->ctx->connectPromise !== null) {
+            $this->ctx->connectPromise->reject($exception);
+            $this->ctx->connectPromise = null;
+        }
+
+        if ($this->ctx->currentCommand !== null) {
+            $this->ctx->currentCommand->promise->reject($exception);
+            $this->ctx->currentCommand = null;
+        }
+
+        while (! $this->ctx->commandQueue->isEmpty()) {
+            $this->ctx->commandQueue->dequeue()->promise->reject($exception);
+        }
+    }
+
+    private function removeFromQueue(CommandRequest $command): bool
+    {
+        $found = false;
+        /** @var SplQueue<CommandRequest> $temp */
+        $temp = new SplQueue();
+        while (! $this->ctx->commandQueue->isEmpty()) {
+            $cmd = $this->ctx->commandQueue->dequeue();
+            if ($cmd === $command) {
+                $found = true;
+            } else {
+                $temp->enqueue($cmd);
+            }
+        }
+        $this->ctx->commandQueue = $temp;
+
+        return $found;
     }
 
     /**
@@ -399,106 +545,90 @@ class Connection implements ConnectionBridge
     private function resolveStatementParams(PreparedStatement $stmt, array $params): array
     {
         if ($params !== [] && \is_string(array_key_first($params))) {
-            // Named associative array — resolve against the ordered param names
-            // captured when prepare() parsed the SQL.
+            /** @var array<string, mixed> $params */
             return ParamParser::resolveNamed($stmt->paramNames, $params);
         }
 
-        // Indexed array: normalise to 0-based and pass through
         return array_values($params);
     }
 
     private function processPing(): void
     {
-        $healthy = pg_connection_status($this->ctx->connection) === PGSQL_CONNECTION_OK;
+        $healthy = pg_connection_status($this->assertConnection()) === PGSQL_CONNECTION_OK;
         $this->finishCommand(
             $healthy ? null : new ConnectionException('Ping failed. Connection is unhealthy.'),
             $healthy ? true : null,
         );
     }
 
-    private function processPrepare(CommandRequest $cmd): bool
+    private function processPrepare(CommandRequest $cmd): void
     {
-        $sent = @pg_send_prepare($this->ctx->connection, 'stmt_' . $this->stmtCounter, $cmd->sql);
-
-        if (! $sent) {
-            throw new QueryException('Failed to send PREPARE: ' . pg_last_error($this->ctx->connection));
+        $sent = @pg_send_prepare($this->assertConnection(), 'stmt_' . $this->stmtCounter, $cmd->sql);
+        if ($sent === false) {
+            throw new QueryException('Failed to send PREPARE: ' . pg_last_error($this->assertConnection()));
         }
-
         $this->addQueryReadWatcher();
-
-        return true;
     }
 
-    private function processExecute(CommandRequest $cmd): bool
+    private function processExecute(CommandRequest $cmd): void
     {
-        $sent = @pg_send_execute($this->ctx->connection, $cmd->sql, $this->normalizeParams($cmd->params));
-
-        if (! $sent) {
-            throw new QueryException('Failed to send EXECUTE: ' . pg_last_error($this->ctx->connection));
+        $sent = @pg_send_execute($this->assertConnection(), $cmd->sql, $this->normalizeParams($cmd->params));
+        if ($sent === false) {
+            throw new QueryException('Failed to send EXECUTE: ' . pg_last_error($this->assertConnection()));
         }
-
         $this->addQueryReadWatcher();
-
-        return true;
     }
 
-    private function processExecuteStream(CommandRequest $cmd): bool
+    private function processExecuteStream(CommandRequest $cmd): void
     {
         /** @var RowStream $stream */
         $stream = $cmd->context;
         $stream->setResumeCallback($this->streamHandler->resume(...));
 
-        $sent = @pg_send_execute($this->ctx->connection, $cmd->sql, $this->normalizeParams($cmd->params));
-
-        if (! $sent) {
-            throw new QueryException('Failed to send EXECUTE (stream): ' . pg_last_error($this->ctx->connection));
+        $sent = @pg_send_execute($this->assertConnection(), $cmd->sql, $this->normalizeParams($cmd->params));
+        if ($sent === false) {
+            throw new QueryException('Failed to send EXECUTE (stream): ' . pg_last_error($this->assertConnection()));
         }
 
         if (function_exists('pg_set_chunked_rows_size')) {
-            @pg_set_chunked_rows_size($this->ctx->connection, $stream->bufferSize);
+            @pg_set_chunked_rows_size($this->assertConnection(), $stream->bufferSize);
         }
 
         $this->addQueryReadWatcher();
-
-        return true;
     }
 
-    private function processStream(CommandRequest $cmd): bool
+    private function processStream(CommandRequest $cmd): void
     {
         /** @var RowStream $stream */
         $stream = $cmd->context;
         $stream->setResumeCallback($this->streamHandler->resume(...));
 
         if (! function_exists('pg_set_chunked_rows_size')) {
+            // Fallback to server-side cursors for PHP versions where chunked mode is unavailable.
             $this->cursorHandler->init($cmd->sql, []);
 
-            return false;
+            return;
         }
 
-        $sent = @pg_send_query($this->ctx->connection, $cmd->sql);
+        $sent = @pg_send_query($this->assertConnection(), $cmd->sql);
 
-        if (! $sent) {
-            throw new QueryException('Failed to send query: ' . pg_last_error($this->ctx->connection));
+        if ($sent === false) {
+            throw new QueryException('Failed to send query: ' . pg_last_error($this->assertConnection()));
         }
 
-        @pg_set_chunked_rows_size($this->ctx->connection, $stream->bufferSize);
+        @pg_set_chunked_rows_size($this->assertConnection(), $stream->bufferSize);
         $this->addQueryReadWatcher();
-
-        return true;
     }
 
-    private function processQuery(CommandRequest $cmd): bool
+    private function processQuery(CommandRequest $cmd): void
     {
-        $sent = @pg_send_query($this->ctx->connection, $cmd->sql);
+        $sent = @pg_send_query($this->assertConnection(), $cmd->sql);
 
-        if (! $sent) {
-            throw new QueryException('Failed to send query: ' . pg_last_error($this->ctx->connection));
+        if ($sent === false) {
+            throw new QueryException('Failed to send query: ' . pg_last_error($this->assertConnection()));
         }
 
         $this->addQueryReadWatcher();
-
-        return true;
     }
 
     public function addQueryReadWatcher(): void
@@ -529,49 +659,11 @@ class Connection implements ConnectionBridge
         $this->queryResultHandler->drain();
     }
 
-    private function enqueueCommand(
-        string $type,
-        string $sql = '',
-        array $params = [],
-        mixed $context = null,
-    ): PromiseInterface {
-        if ($this->ctx->state === ConnectionState::CLOSED) {
-            return Promise::rejected(new ConnectionException('Connection is closed'));
-        }
-
-        $promise = new Promise();
-        $command = new CommandRequest($type, $promise, $sql, $params, $context);
-        $this->ctx->commandQueue->enqueue($command);
-
-        $promise->onCancel(function () use ($command): void {
-            if ($this->ctx->currentCommand === $command) {
-                if ($this->config->enableServerSideCancellation && $this->ctx->connection !== null) {
-                    @pg_cancel_query($this->ctx->connection);
-                } else {
-                    $this->close();
-                }
-            } else {
-                $this->removeFromQueue($command);
-            }
-        });
-
-        $this->processNextCommand();
-
-        return $promise;
-    }
-
-    private function removeFromQueue(CommandRequest $command): void
-    {
-        $temp = new SplQueue();
-        while (! $this->ctx->commandQueue->isEmpty()) {
-            $cmd = $this->ctx->commandQueue->dequeue();
-            if ($cmd !== $command) {
-                $temp->enqueue($cmd);
-            }
-        }
-        $this->ctx->commandQueue = $temp;
-    }
-
+    /**
+     * @param array<int, mixed> $params
+     *
+     * @return array<int, mixed>
+     */
     private function normalizeParams(array $params): array
     {
         return array_map(
@@ -593,5 +685,19 @@ class Connection implements ConnectionBridge
         }
 
         $this->removeQueryReadWatcher();
+    }
+
+    /**
+     * Narrows the connection resource to the concrete PgSql\Connection type
+     * that modern pg_* functions require.
+     *
+     * Must only be called when $this->ctx->connection is known to be non-null
+     * (i.e. after a successful pg_connect and before teardown).
+     */
+    private function assertConnection(): \PgSql\Connection
+    {
+        assert($this->ctx->connection instanceof \PgSql\Connection);
+
+        return $this->ctx->connection;
     }
 }

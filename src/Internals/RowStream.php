@@ -5,6 +5,7 @@ declare(strict_types=1);
 namespace Hibla\Postgres\Internals;
 
 use Hibla\Postgres\Interfaces\PgSqlRowStream;
+use Hibla\Postgres\Interfaces\StreamContext;
 use Hibla\Promise\Exceptions\CancelledException;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
@@ -16,14 +17,26 @@ use function Hibla\await;
 /**
  * @internal
  */
-class RowStream implements PgSqlRowStream
+class RowStream implements PgSqlRowStream, StreamContext
 {
+    /**
+     * @var SplQueue<array<string, string|null>>
+     */
     private SplQueue $buffer;
 
+    /**
+     * @var list<string>
+     */
     private array $columnNames = [];
 
+    /**
+     * @var Promise<array<string, string|null>|null>|null
+     */
     private ?Promise $waiter = null;
 
+    /**
+     * @var PromiseInterface<mixed>|null
+     */
     private ?PromiseInterface $commandPromise = null;
 
     private ?Throwable $error = null;
@@ -68,6 +81,8 @@ class RowStream implements PgSqlRowStream
 
     /**
      * @internal
+     *
+     * @param PromiseInterface<mixed> $promise
      */
     public function bindCommandPromise(PromiseInterface $promise): void
     {
@@ -76,6 +91,8 @@ class RowStream implements PgSqlRowStream
 
     /**
      * @inheritdoc
+     *
+     * @return \Generator<int, array<string, string|null>, mixed, void>
      */
     public function getIterator(): \Generator
     {
@@ -87,7 +104,6 @@ class RowStream implements PgSqlRowStream
             if (! $this->buffer->isEmpty()) {
                 $row = $this->buffer->dequeue();
 
-                // BACKPRESSURE: buffer dropped below half — tell the connection to resume
                 if ($this->resumeCallback !== null && $this->buffer->count() <= ($this->bufferSize / 2)) {
                     ($this->resumeCallback)();
                 }
@@ -101,19 +117,18 @@ class RowStream implements PgSqlRowStream
                 break;
             }
 
-            // Buffer is empty and stream is not done — resume the connection
-            // so it starts sending rows again, then suspend until data arrives
             if ($this->resumeCallback !== null) {
                 ($this->resumeCallback)();
             }
 
-            $this->waiter = new Promise();
+            $this->waiter = new Promise(); // @phpstan-ignore-line
             $row = await($this->waiter);
 
             if ($row === null) {
                 break;
             }
 
+            //@phpstan-ignore-next-line
             yield $row;
         }
     }
@@ -154,6 +169,8 @@ class RowStream implements PgSqlRowStream
 
     /**
      * @internal
+     *
+     * @param array<string, string|null> $row
      */
     public function push(array $row): void
     {

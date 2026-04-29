@@ -46,20 +46,16 @@ final class StreamHandler
         }
 
         if ($this->ctx->cursor->phase === CursorPhase::Fetch) {
-            // Cursor mode: request the next batch from the server.
             $this->cursorHandler->sendFetch();
 
             return;
         }
 
-        // Chunked mode: drain whatever libpq already has in its internal buffer,
-        // then re-arm the watcher for any remaining server data.
+        // drain() may call pause() internally, flipping isStreamPaused back to true.
         $this->queryResultHandler->drain();
 
-        if (! $this->ctx->isStreamPaused
-            && $this->ctx->queryWatcherId === null
-            && $this->ctx->currentCommand !== null
-        ) {
+        // @phpstan-ignore booleanNot.alwaysTrue
+        if (! $this->ctx->isStreamPaused && $this->ctx->queryWatcherId === null) {
             $this->bridge->addQueryReadWatcher();
         }
     }

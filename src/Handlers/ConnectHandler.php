@@ -8,6 +8,7 @@ use Hibla\EventLoop\Loop;
 use Hibla\Postgres\Enums\ConnectionState;
 use Hibla\Postgres\Interfaces\ConnectionBridge;
 use Hibla\Postgres\Internals\ConnectionContext;
+use Hibla\Postgres\Traits\HandlerHelperTrait;
 use Hibla\Sql\Exceptions\ConnectionException;
 
 /**
@@ -19,6 +20,8 @@ use Hibla\Sql\Exceptions\ConnectionException;
  */
 final class ConnectHandler
 {
+    use HandlerHelperTrait;
+
     public function __construct(
         private readonly ConnectionContext $ctx,
         private readonly ConnectionBridge $bridge,
@@ -38,15 +41,21 @@ final class ConnectHandler
             // We close everything directly here (not via Connection::close) because
             // the command queue will be empty at this point — no commands can be
             // enqueued until the connect promise resolves.
-            $errorMsg = $this->ctx->connection
-                ? (@pg_last_error($this->ctx->connection) ?: 'Failed to retrieve socket during polling')
-                : 'Connection lost';
+            if ($this->ctx->connection !== null) {
+                $conn = $this->getTypedConnection();
+                $lastError = @pg_last_error($conn);
+
+                $errorMsg = $lastError !== '' ? $lastError : 'Failed to retrieve socket during polling';
+            } else {
+                $errorMsg = 'Connection lost';
+            }
 
             $this->ctx->state = ConnectionState::CLOSED;
             $this->clearPollWatchers();
 
             if ($this->ctx->connection !== null) {
-                @pg_close($this->ctx->connection);
+                $conn = $this->getTypedConnection();
+                @pg_close($conn);
                 $this->ctx->connection = null;
             }
 
@@ -58,7 +67,7 @@ final class ConnectHandler
         }
 
         $this->ctx->socket = $freshSocket;
-        $status = @pg_connect_poll($this->ctx->connection);
+        $status = @pg_connect_poll($this->getTypedConnection());
 
         match (true) {
             $status === PGSQL_POLLING_FAILED => $this->onFailed(),
@@ -67,12 +76,13 @@ final class ConnectHandler
         };
     }
 
-    // ── Poll outcomes ─────────────────────────────────────────────────────────
-
     private function onFailed(): void
     {
-        // Delegate full teardown to Connection (it owns the queue + close logic).
-        $errorMsg = pg_last_error($this->ctx->connection) ?: 'Connection polling failed';
+        $conn = $this->getTypedConnection();
+
+        $lastError = pg_last_error($conn);
+        $errorMsg = $lastError !== '' ? $lastError : 'Connection polling failed';
+
         $this->bridge->onConnectFailed($errorMsg);
     }
 
@@ -83,9 +93,11 @@ final class ConnectHandler
         $this->bridge->onConnectReady();
     }
 
-    private function rearm(int $status, mixed $socket): void
+    /**
+     * @param resource $socket
+     */
+    private function rearm(int $status, $socket): void
     {
-        // libpq needs more I/O — swap the watcher direction accordingly.
         $this->clearPollWatchers();
 
         if ($status === PGSQL_POLLING_READING) {
@@ -96,8 +108,6 @@ final class ConnectHandler
             $this->ctx->pollWatcherType = 'write';
         }
     }
-
-    // ── Helpers ───────────────────────────────────────────────────────────────
 
     private function clearPollWatchers(): void
     {
@@ -124,7 +134,8 @@ final class ConnectHandler
             return false;
         }
 
-        $socket = @pg_socket($this->ctx->connection);
+        $conn = $this->getTypedConnection();
+        $socket = @pg_socket($conn);
 
         return $socket !== false ? $socket : false;
     }

@@ -41,6 +41,9 @@ final readonly class PgSqlConfig
         }
     }
 
+    /**
+     * @param array<string, mixed> $config
+     */
     public static function fromArray(array $config): self
     {
         $host = $config['host'] ?? throw new \InvalidArgumentException('Host is required');
@@ -54,12 +57,12 @@ final readonly class PgSqlConfig
         return new self(
             host: $host,
             port: $port,
-            username: (string) ($config['username'] ?? 'postgres'),
-            password: (string) ($config['password'] ?? ''),
-            database: (string) ($config['database'] ?? ''),
-            sslmode: (string) ($config['sslmode'] ?? 'prefer'),
+            username: self::getString($config['username'] ?? null, 'postgres'),
+            password: self::getString($config['password'] ?? null, ''),
+            database: self::getString($config['database'] ?? null, ''),
+            sslmode: self::getString($config['sslmode'] ?? null, 'prefer'),
             connectTimeout: is_numeric($config['connect_timeout'] ?? 10) ? (int) ($config['connect_timeout'] ?? 10) : 10,
-            applicationName: (string) ($config['application_name'] ?? 'hibla_pgsql'),
+            applicationName: self::getString($config['application_name'] ?? null, 'hibla_pgsql'),
             killTimeoutSeconds: is_numeric($config['kill_timeout_seconds'] ?? self::DEFAULT_KILL_TIMEOUT_SECONDS)
                 ? (float) ($config['kill_timeout_seconds'] ?? self::DEFAULT_KILL_TIMEOUT_SECONDS)
                 : self::DEFAULT_KILL_TIMEOUT_SECONDS,
@@ -148,5 +151,10 @@ final readonly class PgSqlConfig
         }
 
         return implode(' ', $parts);
+    }
+
+    private static function getString(mixed $value, string $default): string
+    {
+        return \is_scalar($value) ? (string) $value : $default;
     }
 }

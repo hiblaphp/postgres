@@ -17,8 +17,7 @@ final class ParamParser
      * and whether a bare statement-separator (`;`) was seen outside any literal
      * or comment context.
      *
-     * @return array{0: string, 1: int, 2: list<string>, 3: bool}
-     *                                                            [convertedSql, paramCount, paramNames, hasBareStatement]
+     * @return array{0: string, 1: int, 2: list<string>, 3: bool} [convertedSql, paramCount, paramNames, hasBareStatement]
      */
     public static function parsePlaceholders(string $sql): array
     {
@@ -263,6 +262,7 @@ final class ParamParser
 
                 // ── DOLLAR-QUOTED STRING ($tag$ ... $tag$) ────────────────────────
             } elseif ($state === '$$') {
+                //@phpstan-ignore-next-line no-undefined-variables
                 $tagLen = \strlen($dollarTag);
 
                 if (substr($sql, $i, $tagLen) === $dollarTag) {
@@ -297,6 +297,7 @@ final class ParamParser
         $isNamed = \is_string(array_key_first($params));
 
         if ($isNamed) {
+            //@phpstan-ignore-next-line no-undefined-variables
             return self::parseNamed($sql, $params);
         }
 
