@@ -23,10 +23,13 @@ class PreparedStatement implements PreparedStatementInterface
     /**
      * @param Connection $connection The connection that owns this statement.
      * @param string $name The server-side statement name (e.g. "stmt_3").
+     * @param list<string> $paramNames Ordered parameter names from the original SQL,
+     *                                 empty when positional (?) placeholders were used.
      */
     public function __construct(
         private readonly Connection $connection,
         public readonly string $name,
+        public readonly array $paramNames = [],
     ) {
     }
 

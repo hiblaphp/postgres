@@ -170,7 +170,7 @@ class Connection implements ConnectionBridge
     /**
      * Prepares a SQL statement on the server and returns a PreparedStatement handle.
      *
-     * Converts `?` placeholders to the PostgreSQL `$1, $2, …` format automatically.
+     * Converts `?` and `:name` placeholders to the PostgreSQL `$1, $2, …` format automatically.
      *
      * @return PromiseInterface<PreparedStatement>
      */
@@ -178,40 +178,42 @@ class Connection implements ConnectionBridge
     {
         $name = 'stmt_' . (++$this->stmtCounter);
 
-        [$parsedSql] = ParamParser::parsePlaceholders($sql);
+        [$parsedSql,, $paramNames] = ParamParser::parsePlaceholders($sql);
 
-        // Pass a factory closure so QueryResultHandler can construct the
-        // PreparedStatement after the server acknowledges the PREPARE without
-        // needing a direct dependency on this class.
         $connection = $this;
-        $factory = static fn () => new PreparedStatement($connection, $name);
+        $factory = static fn () => new PreparedStatement($connection, $name, $paramNames);
 
         return $this->enqueueCommand(CommandRequest::TYPE_PREPARE, $parsedSql, [], $factory);
     }
 
     /**
-     * Executes a prepared statement and returns the full buffered result.
-     *
-     * @param array<int, mixed> $params
+     * @param array<string|int, mixed> $params
      *
      * @return PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlResult>
      */
     public function executeStatement(PreparedStatement $stmt, array $params): PromiseInterface
     {
-        return $this->enqueueCommand(CommandRequest::TYPE_EXECUTE, $stmt->name, $params);
+        return $this->enqueueCommand(
+            CommandRequest::TYPE_EXECUTE,
+            $stmt->name,
+            $this->resolveStatementParams($stmt, $params),
+        );
     }
 
     /**
-     * Executes a prepared statement and streams the result row-by-row.
-     *
-     * @param array<int, mixed> $params
+     * @param array<string|int, mixed> $params
      *
      * @return PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlRowStream>
      */
     public function executeStatementStream(PreparedStatement $stmt, array $params, int $bufferSize = 100): PromiseInterface
     {
         $stream = new RowStream($bufferSize);
-        $commandPromise = $this->enqueueCommand(CommandRequest::TYPE_EXECUTE_STREAM, $stmt->name, $params, $stream);
+        $commandPromise = $this->enqueueCommand(
+            CommandRequest::TYPE_EXECUTE_STREAM,
+            $stmt->name,
+            $this->resolveStatementParams($stmt, $params),
+            $stream,
+        );
         $stream->bindCommandPromise($commandPromise);
 
         return Promise::resolved($stream);
@@ -320,10 +322,10 @@ class Connection implements ConnectionBridge
 
     public function onConnectFailed(string $errorMsg): void
     {
-        // Null the promise first so close() does not double-reject it.
         $promise = $this->ctx->connectPromise;
         $this->ctx->connectPromise = null;
         $this->close();
+
         $promise?->reject(new ConnectionException($errorMsg));
     }
 
@@ -387,6 +389,23 @@ class Connection implements ConnectionBridge
             }
             $this->finishCommand($e);
         }
+    }
+
+    /**
+     * @param array<string|int, mixed> $params
+     *
+     * @return array<int, mixed>
+     */
+    private function resolveStatementParams(PreparedStatement $stmt, array $params): array
+    {
+        if ($params !== [] && \is_string(array_key_first($params))) {
+            // Named associative array — resolve against the ordered param names
+            // captured when prepare() parsed the SQL.
+            return ParamParser::resolveNamed($stmt->paramNames, $params);
+        }
+
+        // Indexed array: normalise to 0-based and pass through
+        return array_values($params);
     }
 
     private function processPing(): void
