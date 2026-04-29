@@ -242,8 +242,9 @@ describe('Edge cases — statement lifecycle', function () {
             $stmt = await($conn->prepare('SELECT :v AS v'));
             await($stmt->close());
 
-            expect(fn() => $stmt->executeStream(['v' => 1]))
-                ->toThrow(PreparedException::class);
+            expect(fn () => $stmt->executeStream(['v' => 1]))
+                ->toThrow(PreparedException::class)
+            ;
         } finally {
             $conn->close();
         }
@@ -324,8 +325,9 @@ describe('Edge cases — connection-level guards', function () {
         $conn = pgConn();
         $conn->close();
 
-        expect(fn() => await($conn->prepare('SELECT 1')))
-            ->toThrow(Hibla\Sql\Exceptions\ConnectionException::class);
+        expect(fn () => await($conn->prepare('SELECT 1')))
+            ->toThrow(Hibla\Sql\Exceptions\ConnectionException::class)
+        ;
     });
 
     it('rejects a named param whose key contains characters that could confuse the parser', function () {
@@ -337,9 +339,9 @@ describe('Edge cases — connection-level guards', function () {
                 $stmt = await($conn->prepare('SELECT :foo::int AS n'));
             })->not->toThrow(QueryException::class);
         } finally {
-            
+
             if ($stmt) {
-                await($stmt->close()); 
+                await($stmt->close());
             }
 
             $conn->close();
