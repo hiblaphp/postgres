@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Hibla\EventLoop\Loop;
 use Hibla\Postgres\Internals\Connection;
 
 use function Hibla\await;
@@ -84,15 +85,14 @@ describe('Cancellation', function () {
         try {
             $slowPromise = $conn->query('SELECT pg_sleep(2)');
 
-            Hibla\EventLoop\Loop::addTimer(0.1, function () use ($slowPromise) {
+            Loop::addTimer(0.1, function () use ($slowPromise) {
                 $slowPromise->cancel();
             });
 
-            // We queue the next query immediately.
             $fastPromise = $conn->query('SELECT 1 AS alive');
 
             $start = microtime(true);
-            $result = await($fastPromise); // Result of 'SELECT 1'
+            $result = await($fastPromise); 
             $duration = microtime(true) - $start;
 
             $row = $result->fetchOne();

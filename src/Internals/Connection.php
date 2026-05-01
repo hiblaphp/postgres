@@ -50,9 +50,37 @@ class Connection implements ConnectionBridge
     /**
      * Tracks in-flight pg_cancel_backend promises keyed by process ID (PID).
      *
+     * Keying by PID is intentional: PostgreSQL has exactly one running query
+     * per backend at any moment, so a second cancel for the same PID before
+     * the first resolves is redundant. The idempotency guard in
+     * dispatchCancelBackend() prevents the second call from overwriting the
+     * first promise and orphaning it.
+     *
+     * Each promise is created and registered SYNCHRONOUSLY inside
+     * dispatchCancelBackend() before nextTick() schedules the work, so
+     * close() always sees a non-empty map regardless of when it runs
+     * relative to the callback.
+     *
+     * Entries are removed once the cancel promise settles, keeping the
+     * map lean across the connection lifetime.
+     *
      * @var array<int, Promise<mixed>>
      */
     private array $pendingCancels = [];
+
+    /**
+     * Set to true when a query was cancelled mid-execution via pg_cancel_backend.
+     *
+     * The pool MUST check this via wasQueryCancelled() and wait for the
+     * connection to return to READY state before reuse. Unlike MySQL's KILL
+     * QUERY, pg_cancel_backend causes the server to send an ErrorResponse on
+     * the main wire, which QueryResultHandler will consume and route through
+     * finishCommand() — resetting state back to READY automatically.
+     *
+     * The flag exists purely as a signal to the pool layer so it can defer
+     * returning this connection until that drain cycle completes.
+     */
+    private bool $wasQueryCancelled = false;
 
     /**
      * @param PgSqlConfig|array<string, mixed>|string $config
@@ -176,7 +204,7 @@ class Connection implements ConnectionBridge
         [$parsedSql,, $paramNames] = ParamParser::parsePlaceholders($sql);
 
         $connection = $this;
-        $factory = static fn () => new PreparedStatement($connection, $name, $paramNames);
+        $factory = static fn() => new PreparedStatement($connection, $name, $paramNames);
 
         /** @var PromiseInterface<PreparedStatement> $promise */
         $promise = $this->enqueueCommand(CommandRequest::TYPE_PREPARE, $parsedSql, [], $factory);
@@ -258,7 +286,7 @@ class Connection implements ConnectionBridge
         ) {
             /** @var PromiseInterface<void> */
             return $this->enqueueCommand(CommandRequest::TYPE_QUERY, 'ROLLBACK')
-                ->then(fn () => $this->enqueueCommand(CommandRequest::TYPE_RESET, 'DISCARD ALL'))
+                ->then(fn() => $this->enqueueCommand(CommandRequest::TYPE_RESET, 'DISCARD ALL'))
             ;
         }
 
@@ -288,12 +316,59 @@ class Connection implements ConnectionBridge
             : PGSQL_TRANSACTION_UNKNOWN;
     }
 
+    /**
+     * Returns true if a query was cancelled via pg_cancel_backend on this connection.
+     *
+     * When true, the connection pool MUST NOT return this connection to the
+     * ready pool until finishCommand() has fired and state returns to READY.
+     * Unlike MySQL's KILL QUERY, no scrub query is needed — the ErrorResponse
+     * from the server is consumed automatically by QueryResultHandler.
+     */
+    public function wasQueryCancelled(): bool
+    {
+        return $this->wasQueryCancelled;
+    }
+
+    /**
+     * Clears the cancelled flag once the pool has confirmed the connection
+     * has returned to READY state after the cancel drain cycle.
+     */
+    public function clearCancelledFlag(): void
+    {
+        $this->wasQueryCancelled = false;
+    }
+
+    /**
+     * Closes the connection and releases all resources.
+     *
+     * If the connection is actively querying and server-side cancellation is
+     * enabled, a pg_cancel_backend is dispatched on a side-channel BEFORE
+     * state is set to CLOSED. This prevents the server-side query from holding
+     * row or table locks after the client disconnects.
+     *
+     * The snapshot of $pendingCancels is taken AFTER state is set to CLOSED
+     * and AFTER the conditional dispatch above. At that point no new cancels
+     * can be added:
+     *   - handleCommandCancellation() guards with state !== CLOSED
+     *   - close() itself only dispatches in the block above
+     * The two code paths are therefore mutually exclusive at snapshot time.
+     *
+     * Teardown is always guaranteed to run: each pending cancel is wrapped in
+     * a hard timeout via killTimeoutSeconds, so a slow or unreachable
+     * side-channel can never block shutdown indefinitely.
+     */
     public function close(): void
     {
         if ($this->ctx->state === ConnectionState::CLOSED) {
             return;
         }
 
+        // Fail-safe: if closing a busy connection with cancellation enabled,
+        // dispatch pg_cancel_backend so the server-side query is interrupted.
+        // dispatchCancelBackend() is a no-op if a cancel is already in-flight
+        // for this PID (e.g. from a prior promise cancellation), so there is
+        // no double-send and no risk of overwriting an existing pendingCancels
+        // entry and orphaning it.
         $pid = $this->getProcessId();
         if (
             $this->ctx->state === ConnectionState::QUERYING
@@ -305,6 +380,10 @@ class Connection implements ConnectionBridge
 
         $this->ctx->state = ConnectionState::CLOSED;
 
+        // Snapshot pendingCancels AFTER state is set to CLOSED and AFTER the
+        // conditional dispatch above. No new cancels can be added from this
+        // point forward. Both branches of then() call teardown() so that a
+        // rejected or timed-out cancel never silently skips cleanup.
         if ($this->pendingCancels !== []) {
             $this->awaitPendingCancels()->then(
                 $this->teardown(...),
@@ -434,30 +513,95 @@ class Connection implements ConnectionBridge
         return $promise;
     }
 
+    /**
+     * Handles all edge cases when a command promise is cancelled.
+     *
+     * Case 1 — Command still in queue (not yet started):
+     *   Just remove it. No server interaction needed.
+     *
+     * Case 2 — Command is currently executing, cancellation enabled:
+     *   Dispatch pg_cancel_backend on a side-channel. The server will send an
+     *   ErrorResponse on the main wire, which QueryResultHandler consumes and
+     *   routes through finishCommand(), resetting state back to READY.
+     *   The wasQueryCancelled flag is set so the pool can defer reuse until
+     *   that drain cycle completes.
+     *
+     * Case 3 — Command is currently executing, cancellation disabled:
+     *   PostgreSQL's wire protocol does not support interrupting a running
+     *   query without a side-channel. Unlike MySQL, the connection cannot idle
+     *   while the server finishes — the wire is blocked until the result
+     *   arrives. Closing is the only safe option; the caller must reconnect.
+     */
     private function handleCommandCancellation(CommandRequest $command): void
     {
         if ($this->removeFromQueue($command)) {
             return;
         }
 
-        if ($this->ctx->currentCommand === $command) {
-            $pid = $this->getProcessId();
-            if ($this->config->enableServerSideCancellation && $pid > 0 && $this->ctx->state !== ConnectionState::CLOSED) {
-                $this->dispatchCancelBackend($pid);
-            }
+        if ($this->ctx->currentCommand !== $command) {
+            return;
+        }
+
+        $pid = $this->getProcessId();
+
+        if ($this->config->enableServerSideCancellation && $pid > 0 && $this->ctx->state !== ConnectionState::CLOSED) {
+            $this->wasQueryCancelled = true;
+            $this->dispatchCancelBackend($pid);
+        } elseif (! $this->config->enableServerSideCancellation && $this->ctx->state !== ConnectionState::CLOSED) {
+            // Cannot cleanly interrupt the running query without a side-channel.
+            // The only safe option is to close and let the caller reconnect.
+            $this->close();
         }
     }
 
+    /**
+     * Opens a dedicated side-channel connection and sends pg_cancel_backend(<pid>).
+     *
+     * Key design properties:
+     *
+     *   1. IDEMPOTENT — if a cancel is already in-flight for this PID the
+     *      method is a no-op. Sending a second one is redundant and would
+     *      orphan the first promise, causing awaitPendingCancels() to never
+     *      see it resolve. This also closes the double-dispatch race where
+     *      both handleCommandCancellation() and close() independently detect
+     *      a live query and call dispatchCancelBackend() for the same PID.
+     *
+     *   2. SYNCHRONOUS REGISTRATION — $cancelPromise is created and stored in
+     *      $pendingCancels BEFORE nextTick() schedules the work. This closes
+     *      the tick-boundary race where close() runs in the same tick as
+     *      dispatchCancelBackend() but before the callback executes, making
+     *      pendingCancels appear empty to close().
+     *
+     *   3. BOUNDED — the cancel work is wrapped in killTimeoutSeconds so a
+     *      slow or unreachable side-channel never blocks teardown forever.
+     *
+     *   4. SAFE AFTER TEARDOWN — the callback captures only $this->config and
+     *      $this->connector, both of which are readonly and never nulled by
+     *      teardown(). The callback therefore remains safe to execute even if
+     *      teardown() has already run on the parent connection.
+     *
+     *   5. NON-BLOCKING — nextTick() defers execution to the next event loop
+     *      tick, preventing the current call stack (especially destructors or
+     *      close()) from blocking while the side-channel connects and queries.
+     */
     private function dispatchCancelBackend(int $pid): void
     {
+        // Idempotency guard — a cancel is already in-flight for this PID.
+        // Sending a second one is redundant and would orphan the first promise,
+        // causing awaitPendingCancels() to never see it resolve.
         if (isset($this->pendingCancels[$pid])) {
             return;
         }
 
+        // Registered synchronously so close() always sees a non-empty
+        // pendingCancels map regardless of when it runs relative to the callback.
         $cancelPromise = new Promise();
         $this->pendingCancels[$pid] = $cancelPromise;
 
         Loop::nextTick(function () use ($pid, $cancelPromise): void {
+            // Both resolve and reject paths must settle $cancelPromise and clean
+            // up the pendingCancels entry and allSettled() in awaitPendingCancels()
+            // depends on every entry eventually reaching a terminal state.
             $settle = function () use ($cancelPromise, $pid): void {
                 $cancelPromise->resolve(null);
                 unset($this->pendingCancels[$pid]);
@@ -467,7 +611,7 @@ class Connection implements ConnectionBridge
                 Connection::create($this->config)
                     ->then(function (Connection $killConn) use ($pid): PromiseInterface {
                         return $killConn->query("SELECT pg_cancel_backend({$pid})")
-                            ->finally(fn () => $killConn->close())
+                            ->finally(fn() => $killConn->close())
                         ;
                     }),
                 $this->config->killTimeoutSeconds
@@ -476,6 +620,18 @@ class Connection implements ConnectionBridge
     }
 
     /**
+     * Returns a promise that resolves once every in-flight pg_cancel_backend
+     * promise has reached a terminal state (fulfilled, rejected, or timed out).
+     *
+     * Uses Promise::allSettled() rather than Promise::all() so that a failed
+     * or timed-out cancel never short-circuits teardown — we always want every
+     * cancel to reach a terminal state before we proceed.
+     *
+     * The snapshot of $pendingCancels taken here is stable: by the time this
+     * method is called from close(), state is already CLOSED and no new cancels
+     * can be dispatched (handleCommandCancellation guards with state !== CLOSED,
+     * and close() only dispatches before setting the state flag).
+     *
      * @return PromiseInterface<void>
      */
     private function awaitPendingCancels(): PromiseInterface
@@ -493,6 +649,14 @@ class Connection implements ConnectionBridge
         ;
     }
 
+    /**
+     * Performs the actual resource release after all pending cancels have settled.
+     *
+     * Extracted from close() so it can be invoked either immediately (when no
+     * cancels are in-flight) or deferred (after awaitPendingCancels() resolves).
+     * Keeping teardown separate ensures the two code paths stay in sync and
+     * cannot diverge over time.
+     */
     private function teardown(): void
     {
         $this->clearAllWatchers();
@@ -506,16 +670,23 @@ class Connection implements ConnectionBridge
 
         if ($this->ctx->connectPromise !== null) {
             $this->ctx->connectPromise->reject($exception);
+            // Suppress unhandled rejection — the caller may have already dropped
+            // the connect promise reference by the time teardown runs.
+            $this->ctx->connectPromise->catch(static function (): void {});
             $this->ctx->connectPromise = null;
         }
 
         if ($this->ctx->currentCommand !== null) {
-            $this->ctx->currentCommand->promise->reject($exception);
+            $cmd = $this->ctx->currentCommand;
             $this->ctx->currentCommand = null;
+            $cmd->promise->reject($exception);
+            $cmd->promise->catch(static function (): void {});
         }
 
         while (! $this->ctx->commandQueue->isEmpty()) {
-            $this->ctx->commandQueue->dequeue()->promise->reject($exception);
+            $cmd = $this->ctx->commandQueue->dequeue();
+            $cmd->promise->reject($exception);
+            $cmd->promise->catch(static function (): void {});
         }
     }
 
@@ -667,7 +838,7 @@ class Connection implements ConnectionBridge
     private function normalizeParams(array $params): array
     {
         return array_map(
-            static fn (mixed $p) => \is_bool($p) ? ($p ? '1' : '0') : $p,
+            static fn(mixed $p) => \is_bool($p) ? ($p ? '1' : '0') : $p,
             $params
         );
     }
