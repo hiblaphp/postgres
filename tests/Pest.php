@@ -24,3 +24,26 @@ function pgConn(?PgSqlConfig $config = null): Connection
         Connection::create($config ?? pgConfig())
     );
 }
+
+function twentyRowPgSql(): string
+{
+    return 'SELECT n FROM generate_series(1, 20) AS n ORDER BY n';
+}
+
+function twentyRowPgPreparedSql(): string
+{
+    return 'SELECT n FROM generate_series(1, $1) AS n ORDER BY n';
+}
+
+function pgConnWith(bool $enableServerSideCancellation = true): Connection
+{
+    return await(Connection::create(
+        pgConfig()->withQueryCancellation($enableServerSideCancellation)
+    ));
+}
+
+function awaitCancelDrain(Connection $conn): void
+{
+    await($conn->ping());
+    $conn->clearCancelledFlag();
+}
