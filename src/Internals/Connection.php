@@ -178,17 +178,35 @@ class Connection implements ConnectionBridge
 
     /**
      * Streams a plain SQL query row-by-row.
-     * Do NOT pass user-supplied values directly — use prepare() + executeStatementStream() instead.
      *
      * @return PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlRowStream>
      */
     public function streamQuery(string $sql, int $bufferSize = 100): PromiseInterface
     {
         $stream = new RowStream($bufferSize);
+
+        /** @var Promise<RowStream> $outerPromise */
+        $outerPromise = new Promise();
+
+        $stream->setOuterPromiseCallbacks(
+            onReady: static function () use ($stream, $outerPromise): void {
+                if ($outerPromise->isPending()) {
+                    $outerPromise->resolve($stream);
+                }
+            },
+            onError: static function (Throwable $e) use ($outerPromise): void {
+                if ($outerPromise->isPending()) {
+                    $outerPromise->reject($e);
+                }
+            },
+        );
+
         $commandPromise = $this->enqueueCommand(CommandRequest::TYPE_STREAM, $sql, [], $stream);
         $stream->bindCommandPromise($commandPromise);
 
-        return Promise::resolved($stream);
+        $outerPromise->onCancel($stream->cancel(...));
+
+        return $outerPromise;
     }
 
     /**
@@ -204,7 +222,7 @@ class Connection implements ConnectionBridge
         [$parsedSql,, $paramNames] = ParamParser::parsePlaceholders($sql);
 
         $connection = $this;
-        $factory = static fn() => new PreparedStatement($connection, $name, $paramNames);
+        $factory = static fn () => new PreparedStatement($connection, $name, $paramNames);
 
         /** @var PromiseInterface<PreparedStatement> $promise */
         $promise = $this->enqueueCommand(CommandRequest::TYPE_PREPARE, $parsedSql, [], $factory);
@@ -237,15 +255,34 @@ class Connection implements ConnectionBridge
     public function executeStatementStream(PreparedStatement $stmt, array $params, int $bufferSize = 100): PromiseInterface
     {
         $stream = new RowStream($bufferSize);
+
+        /** @var Promise<RowStream> $outerPromise */
+        $outerPromise = new Promise();
+
+        $stream->setOuterPromiseCallbacks(
+            onReady: static function () use ($stream, $outerPromise): void {
+                if ($outerPromise->isPending()) {
+                    $outerPromise->resolve($stream);
+                }
+            },
+            onError: static function (Throwable $e) use ($outerPromise): void {
+                if ($outerPromise->isPending()) {
+                    $outerPromise->reject($e);
+                }
+            },
+        );
+
         $commandPromise = $this->enqueueCommand(
             CommandRequest::TYPE_EXECUTE_STREAM,
             $stmt->name,
             $this->resolveStatementParams($stmt, $params),
             $stream,
         );
-        $stream->bindCommandPromise($commandPromise);
 
-        return Promise::resolved($stream);
+        $stream->bindCommandPromise($commandPromise);
+        $outerPromise->onCancel($stream->cancel(...));
+
+        return $outerPromise;
     }
 
     /**
@@ -286,7 +323,7 @@ class Connection implements ConnectionBridge
         ) {
             /** @var PromiseInterface<void> */
             return $this->enqueueCommand(CommandRequest::TYPE_QUERY, 'ROLLBACK')
-                ->then(fn() => $this->enqueueCommand(CommandRequest::TYPE_RESET, 'DISCARD ALL'))
+                ->then(fn () => $this->enqueueCommand(CommandRequest::TYPE_RESET, 'DISCARD ALL'))
             ;
         }
 
@@ -611,7 +648,7 @@ class Connection implements ConnectionBridge
                 Connection::create($this->config)
                     ->then(function (Connection $killConn) use ($pid): PromiseInterface {
                         return $killConn->query("SELECT pg_cancel_backend({$pid})")
-                            ->finally(fn() => $killConn->close())
+                            ->finally(fn () => $killConn->close())
                         ;
                     }),
                 $this->config->killTimeoutSeconds
@@ -672,7 +709,8 @@ class Connection implements ConnectionBridge
             $this->ctx->connectPromise->reject($exception);
             // Suppress unhandled rejection — the caller may have already dropped
             // the connect promise reference by the time teardown runs.
-            $this->ctx->connectPromise->catch(static function (): void {});
+            $this->ctx->connectPromise->catch(static function (): void {
+            });
             $this->ctx->connectPromise = null;
         }
 
@@ -680,13 +718,15 @@ class Connection implements ConnectionBridge
             $cmd = $this->ctx->currentCommand;
             $this->ctx->currentCommand = null;
             $cmd->promise->reject($exception);
-            $cmd->promise->catch(static function (): void {});
+            $cmd->promise->catch(static function (): void {
+            });
         }
 
         while (! $this->ctx->commandQueue->isEmpty()) {
             $cmd = $this->ctx->commandQueue->dequeue();
             $cmd->promise->reject($exception);
-            $cmd->promise->catch(static function (): void {});
+            $cmd->promise->catch(static function (): void {
+            });
         }
     }
 
@@ -838,7 +878,7 @@ class Connection implements ConnectionBridge
     private function normalizeParams(array $params): array
     {
         return array_map(
-            static fn(mixed $p) => \is_bool($p) ? ($p ? '1' : '0') : $p,
+            static fn (mixed $p) => \is_bool($p) ? ($p ? '1' : '0') : $p,
             $params
         );
     }

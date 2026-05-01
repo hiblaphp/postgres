@@ -92,7 +92,7 @@ describe('Cancellation', function () {
             $fastPromise = $conn->query('SELECT 1 AS alive');
 
             $start = microtime(true);
-            $result = await($fastPromise); 
+            $result = await($fastPromise);
             $duration = microtime(true) - $start;
 
             $row = $result->fetchOne();

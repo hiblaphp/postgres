@@ -51,6 +51,23 @@ class RowStream implements PgSqlRowStream, StreamContext
     private ?\Closure $resumeCallback = null;
 
     /**
+     * Called once when the first row arrives or the stream completes with no
+     * rows. Used to resolve the outer borrow promise returned by streamQuery()
+     * and executeStatementStream().
+     *
+     * @var \Closure(): void|null
+     */
+    private ?\Closure $onReady = null;
+
+    /**
+     * Called when the stream fails before the first row arrives.
+     * Used to reject the outer borrow promise.
+     *
+     * @var \Closure(Throwable): void|null
+     */
+    private ?\Closure $onError = null;
+
+    /**
      * @inheritDoc
      */
     public int $columnCount {
@@ -77,6 +94,23 @@ class RowStream implements PgSqlRowStream, StreamContext
     public function setResumeCallback(\Closure $callback): void
     {
         $this->resumeCallback = $callback;
+    }
+
+    /**
+     * Wires the two outer promise callbacks used by the two-phase stream design.
+     *
+     * $onReady  — resolves the outer promise on the first row or empty completion.
+     * $onError  — rejects the outer promise on a pre-first-row failure.
+     *
+     * Both callbacks are one-shot: whichever fires first clears both references
+     * so subsequent push()/complete()/error() calls are not double-delivered.
+     *
+     * @internal
+     */
+    public function setOuterPromiseCallbacks(\Closure $onReady, \Closure $onError): void
+    {
+        $this->onReady = $onReady;
+        $this->onError = $onError;
     }
 
     /**
@@ -146,6 +180,11 @@ class RowStream implements PgSqlRowStream, StreamContext
         $this->error = new CancelledException('Stream was cancelled');
         $this->completed = true;
 
+        // Clear outer promise callbacks — cancellation is signalled via the
+        // outer promise's onCancel handler, not through these callbacks.
+        $this->onReady = null;
+        $this->onError = null;
+
         if ($this->commandPromise !== null && ! $this->commandPromise->isSettled()) {
             $this->commandPromise->cancel();
         }
@@ -182,6 +221,10 @@ class RowStream implements PgSqlRowStream, StreamContext
             $this->columnNames = array_keys($row);
         }
 
+        // Resolve the outer promise on the first row so the caller's await()
+        // unblocks. Subsequent pushes are no-ops for the outer promise.
+        $this->fireOnReady();
+
         if ($this->waiter !== null) {
             $promise = $this->waiter;
             $this->waiter = null;
@@ -202,6 +245,10 @@ class RowStream implements PgSqlRowStream, StreamContext
 
         $this->completed = true;
 
+        // Resolve the outer promise even when the result set is empty, so the
+        // caller's await() unblocks with the stream (not with an exception).
+        $this->fireOnReady();
+
         if ($this->waiter !== null) {
             $promise = $this->waiter;
             $this->waiter = null;
@@ -221,6 +268,9 @@ class RowStream implements PgSqlRowStream, StreamContext
         $this->error = $e;
         $this->completed = true;
 
+        // Reject the outer promise so the caller's await() surfaces the error.
+        $this->fireOnError($e);
+
         if ($this->waiter !== null) {
             $promise = $this->waiter;
             $this->waiter = null;
@@ -233,5 +283,36 @@ class RowStream implements PgSqlRowStream, StreamContext
         if (! $this->completed && ! $this->cancelled) {
             $this->cancel();
         }
+    }
+
+    /**
+     * Fires $onReady once and clears both outer callbacks so they cannot
+     * trigger again on subsequent push()/complete() calls.
+     */
+    private function fireOnReady(): void
+    {
+        if ($this->onReady === null) {
+            return;
+        }
+
+        $cb = $this->onReady;
+        $this->onReady = null;
+        $this->onError = null;
+        $cb();
+    }
+
+    /**
+     * Fires $onError once and clears both outer callbacks.
+     */
+    private function fireOnError(Throwable $e): void
+    {
+        if ($this->onError === null) {
+            return;
+        }
+
+        $cb = $this->onError;
+        $this->onReady = null;
+        $this->onError = null;
+        $cb($e);
     }
 }
