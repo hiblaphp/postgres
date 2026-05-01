@@ -12,3 +12,33 @@ services:
       interval: 10s
       timeout: 5s
       retries: 3
+
+  postgres_ssl:
+    image: postgres:15
+    environment:
+      POSTGRES_DB: postgres
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+    ports:
+      - "5444:5432" 
+    volumes:
+      - ./tests/Fixtures/ssl/ca.pem:/tmp/ssl/ca.pem:ro
+      - ./tests/Fixtures/ssl/server-cert.pem:/tmp/ssl/server-cert.pem:ro
+      - ./tests/Fixtures/ssl/server-key.pem:/tmp/ssl/server-key.pem:ro
+    command: >
+      bash -c "
+      mkdir -p /etc/postgresql/ssl &&
+      cp /tmp/ssl/* /etc/postgresql/ssl/ &&
+      chown -R postgres:postgres /etc/postgresql/ssl &&
+      chmod 600 /etc/postgresql/ssl/server-key.pem &&
+      exec docker-entrypoint.sh postgres
+      -c ssl=on
+      -c ssl_ca_file=/etc/postgresql/ssl/ca.pem
+      -c ssl_cert_file=/etc/postgresql/ssl/server-cert.pem
+      -c ssl_key_file=/etc/postgresql/ssl/server-key.pem
+      "
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 10s
+      timeout: 5s
+      retries: 3

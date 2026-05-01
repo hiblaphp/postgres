@@ -20,5 +20,12 @@
         <env name="PGSQL_DATABASE" value="postgres" force="true"/>
         <env name="PGSQL_USERNAME" value="postgres" force="true"/>
         <env name="PGSQL_PASSWORD" value="postgres" force="true"/>
+
+        <!-- PostgreSQL SSL -->
+        <env name="POSTGRES_SSL_HOST" value="127.0.0.1" force="true"/>
+        <env name="POSTGRES_SSL_PORT" value="5444" force="true"/>
+        <env name="POSTGRES_SSL_DATABASE" value="postgres" force="true"/>
+        <env name="POSTGRES_SSL_USERNAME" value="postgres" force="true"/>
+        <env name="POSTGRES_SSL_PASSWORD" value="postgres" force="true"/>
     </php>
 </phpunit>
