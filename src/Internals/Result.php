@@ -25,6 +25,8 @@ class Result implements PgSqlResult
 
     private int $position = 0;
 
+    private ?PgSqlResult $nextResult = null;
+
     /**
      * @param int $affectedRows
      * @param int $lastInsertId Note: Postgres usually relies on RETURNING id, so this might be 0 unless parsed.
@@ -43,6 +45,24 @@ class Result implements PgSqlResult
     ) {
         $this->rowCount = \count($this->rows);
         $this->columnCount = \count($this->columns);
+    }
+
+    /**
+     * @internal
+     *
+     * Links the next result set to this one.
+     */
+    public function setNextResult(PgSqlResult $result): void
+    {
+        $this->nextResult = $result;
+    }
+
+    /**
+     * @inheritDoc
+     */
+    public function nextResult(): ?PgSqlResult
+    {
+        return $this->nextResult;
     }
 
     /**

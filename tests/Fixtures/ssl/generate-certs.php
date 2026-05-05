@@ -25,14 +25,14 @@ CONF);
 $caOptions = [
     'private_key_bits' => 2048,
     'private_key_type' => OPENSSL_KEYTYPE_RSA,
-    'digest_alg'       => 'sha256',
-    'config'           => $caConfFile,
-    'x509_extensions'  => 'v3_ca',
+    'digest_alg' => 'sha256',
+    'config' => $caConfFile,
+    'x509_extensions' => 'v3_ca',
 ];
 
 echo "Generating CA...\n";
-$caKey  = openssl_pkey_new($caOptions);
-$caCsr  = openssl_csr_new(['commonName' => 'Test CA'], $caKey, $caOptions);
+$caKey = openssl_pkey_new($caOptions);
+$caCsr = openssl_csr_new(['commonName' => 'Test CA'], $caKey, $caOptions);
 if ($caCsr === false) {
     die('Error generating CA CSR: ' . openssl_error_string() . "\n");
 }
@@ -59,14 +59,14 @@ CONF);
 $serverOptions = [
     'private_key_bits' => 2048,
     'private_key_type' => OPENSSL_KEYTYPE_RSA,
-    'digest_alg'       => 'sha256',
-    'config'           => $serverConfFile,
-    'x509_extensions'  => 'v3_server',
+    'digest_alg' => 'sha256',
+    'config' => $serverConfFile,
+    'x509_extensions' => 'v3_server',
 ];
 
 echo "Generating Server Certificate (SAN: IP:127.0.0.1)...\n";
-$serverKey  = openssl_pkey_new($serverOptions);
-$serverCsr  = openssl_csr_new(['commonName' => '127.0.0.1'], $serverKey, $serverOptions);
+$serverKey = openssl_pkey_new($serverOptions);
+$serverCsr = openssl_csr_new(['commonName' => '127.0.0.1'], $serverKey, $serverOptions);
 if ($serverCsr === false) {
     die('Error generating Server CSR: ' . openssl_error_string() . "\n");
 }
@@ -92,14 +92,14 @@ CONF);
 $clientOptions = [
     'private_key_bits' => 2048,
     'private_key_type' => OPENSSL_KEYTYPE_RSA,
-    'digest_alg'       => 'sha256',
-    'config'           => $clientConfFile,
-    'x509_extensions'  => 'v3_client',
+    'digest_alg' => 'sha256',
+    'config' => $clientConfFile,
+    'x509_extensions' => 'v3_client',
 ];
 
 echo "Generating Client Certificate (CN=test_user)...\n";
-$clientKey  = openssl_pkey_new($clientOptions);
-$clientCsr  = openssl_csr_new(['commonName' => 'test_user'], $clientKey, $clientOptions);
+$clientKey = openssl_pkey_new($clientOptions);
+$clientCsr = openssl_csr_new(['commonName' => 'test_user'], $clientKey, $clientOptions);
 if ($clientCsr === false) {
     die('Error generating Client CSR: ' . openssl_error_string() . "\n");
 }

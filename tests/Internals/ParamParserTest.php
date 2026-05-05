@@ -971,7 +971,8 @@ describe('ParamParser', function (): void {
 
         it('throws when the query contains multiple statements', function (): void {
             expect(fn () => ParamParser::parse('SELECT :a; DROP TABLE users', ['a' => 1]))
-                ->toThrow(QueryException::class);
+                ->toThrow(QueryException::class)
+            ;
         });
 
         it('does not throw for a semicolon inside a string literal', function (): void {
@@ -980,7 +981,8 @@ describe('ParamParser', function (): void {
                 ['id' => 1]
             );
             expect($sql)->toBe("SELECT * FROM t WHERE note = ';not a statement' AND id = \$1")
-                ->and($params)->toBe([1]);
+                ->and($params)->toBe([1])
+            ;
         });
 
         it('does not throw for a semicolon inside a line comment', function (): void {
@@ -989,7 +991,8 @@ describe('ParamParser', function (): void {
                 ['id' => 1]
             );
             expect($sql)->toBe("SELECT * FROM t -- semicolon here; ignored\nWHERE id = \$1")
-                ->and($params)->toBe([1]);
+                ->and($params)->toBe([1])
+            ;
         });
     });
 });

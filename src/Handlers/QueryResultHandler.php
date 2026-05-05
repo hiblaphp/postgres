@@ -120,7 +120,7 @@ final class QueryResultHandler
             }
         }
 
-        // Server still sending — re-arm watcher if a resume/pause cycle removed it.
+        // Server still sending, re-arm watcher if a resume/pause cycle removed it.
         if (
             ! $this->ctx->isStreamPaused
             && $this->ctx->queryWatcherId === null
@@ -142,9 +142,8 @@ final class QueryResultHandler
             return;
         }
 
-        $res = end($this->ctx->accumulatedResults);
-
-        if ($res === false) {
+        // If the query returned zero result sets (e.g., an empty string)
+        if ($this->ctx->accumulatedResults === []) {
             $this->bridge->finishCommand(null, new Result(
                 connectionId: $this->bridge->getProcessId()
             ));
@@ -152,27 +151,58 @@ final class QueryResultHandler
             return;
         }
 
-        $res = $this->getTypedResult($res);
+        /** @var Result|null $head */
+        $head = null;
+        /** @var Result|null $tail */
+        $tail = null;
 
-        /** @var array<int, array<string, mixed>> $rows */
-        $rows = pg_fetch_all($res);
-        $affected = pg_affected_rows($res);
-        $lastOid = pg_last_oid($res);
-        $oid = $lastOid !== false ? (int) $lastOid : null;
-        $fields = [];
-        $numFields = pg_num_fields($res);
+        foreach ($this->ctx->accumulatedResults as $rawRes) {
+            $res = $this->getTypedResult($rawRes);
 
-        for ($i = 0; $i < $numFields; $i++) {
-            $fields[] = pg_field_name($res, $i);
+            // pg_fetch_all returns false when there are zero rows; normalise to
+            // an empty array so the Result constructor always receives an array.
+            $fetched = pg_fetch_all($res);
+            /** @var array<int, array<string, mixed>> $rows */ // @phpstan-ignore-next-line
+            $rows = $fetched !== false ? $fetched : [];
+
+            $affected = pg_affected_rows($res);
+            $lastOid = pg_last_oid($res);
+            $oid = $lastOid !== false ? (int) $lastOid : null;
+            $fields = [];
+            $numFields = pg_num_fields($res);
+
+            for ($i = 0; $i < $numFields; $i++) {
+                $fields[] = pg_field_name($res, $i);
+            }
+
+            $result = new Result(
+                affectedRows: $affected,
+                connectionId: $this->bridge->getProcessId(),
+                insertedOid: $oid,
+                columns: $fields,
+                rows: $rows,
+            );
+
+            // Build the linked list
+            if ($head === null) {
+                $head = $result;
+                $tail = $result;
+            } else {
+                // $tail cannot be null here because $head and $tail are always
+                // assigned together in the if-branch above and they are set as a
+                // pair or not at all. It use assert() rather than throwing an
+                // exception because this is a structural invariant of this loop,
+                // not a runtime error condition. A thrown exception would imply
+                // the null is something callers should handle; assert() signals
+                // it is a programmer bug that should never occur, and is compiled
+                // away entirely in production (zend.assertions=-1).
+                assert($tail !== null);
+                $tail->setNextResult($result);
+                $tail = $result;
+            }
         }
 
-        $this->bridge->finishCommand(null, new Result(
-            affectedRows: $affected,
-            connectionId: $this->bridge->getProcessId(),
-            insertedOid: $oid,
-            columns: $fields,
-            rows: $rows,
-        ));
+        $this->bridge->finishCommand(null, $head);
     }
 
     /**

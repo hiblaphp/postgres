@@ -26,7 +26,7 @@ function sslFixture(string $filename): string
 {
     $path = realpath(__DIR__ . '/../Fixtures/ssl/' . $filename);
     if ($path === false) {
-        throw new \RuntimeException(
+        throw new RuntimeException(
             "Missing SSL fixture: {$filename}. Run 'php tests/Fixtures/ssl/generate-certs.php' first."
         );
     }
@@ -37,8 +37,8 @@ function sslFixture(string $filename): string
 function sslConfig(array $overrides = []): array
 {
     return array_merge([
-        'host'     => $_ENV['POSTGRES_SSL_HOST'] ?? '127.0.0.1',
-        'port'     => (int) ($_ENV['POSTGRES_SSL_PORT'] ?? 5444),
+        'host' => $_ENV['POSTGRES_SSL_HOST'] ?? '127.0.0.1',
+        'port' => (int) ($_ENV['POSTGRES_SSL_PORT'] ?? 5444),
         'database' => $_ENV['POSTGRES_SSL_DATABASE'] ?? 'postgres',
         'username' => $_ENV['POSTGRES_SSL_USERNAME'] ?? 'postgres',
         'password' => $_ENV['POSTGRES_SSL_PASSWORD'] ?? 'postgres',
@@ -52,7 +52,8 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
         ]))));
 
         $isSsl = await($conn->query('SELECT ssl FROM pg_stat_ssl WHERE pid = pg_backend_pid()'))
-            ->fetchOne()['ssl'];
+            ->fetchOne()['ssl']
+        ;
 
         expect($conn->isReady())->toBeTrue()
             ->and($isSsl)->toBe('t')
@@ -64,11 +65,12 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
     it('connects successfully with strict CA verification (sslmode=verify-full)', function (): void {
         $conn = await(Connection::create(PgSqlConfig::fromArray(sslConfig([
             'sslmode' => 'verify-full',
-            'ssl_ca'  => sslFixture('ca.pem'),
+            'ssl_ca' => sslFixture('ca.pem'),
         ]))));
 
         $row = await($conn->query('SELECT version, cipher FROM pg_stat_ssl WHERE pid = pg_backend_pid()'))
-            ->fetchOne();
+            ->fetchOne()
+        ;
 
         expect($conn->isReady())->toBeTrue()
             ->and($row['version'])->not->toBeEmpty()
@@ -80,20 +82,20 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
 
     it('connects successfully providing Client Certificates (mTLS)', function (): void {
         $keyPath = sslFixture('client-key.pem');
-        $tmpKey  = null;
+        $tmpKey = null;
 
         $perms = fileperms($keyPath);
         if ($perms !== false && ($perms & 0x003C) !== 0) {
-            $tmpKey  = sslTmpCopy($keyPath, 0600);
+            $tmpKey = sslTmpCopy($keyPath, 0600);
             $keyPath = $tmpKey;
         }
 
         try {
             $conn = await(Connection::create(PgSqlConfig::fromArray(sslConfig([
-                'sslmode'  => 'require',
-                'ssl_ca'   => sslFixture('ca.pem'),
+                'sslmode' => 'require',
+                'ssl_ca' => sslFixture('ca.pem'),
                 'ssl_cert' => sslFixture('client-cert.pem'),
-                'ssl_key'  => $keyPath,
+                'ssl_key' => $keyPath,
             ]))));
 
             expect($conn->isReady())->toBeTrue();
@@ -112,7 +114,7 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
         try {
             await(Connection::create(PgSqlConfig::fromArray(sslConfig([
                 'sslmode' => 'verify-ca',
-                'ssl_ca'  => sslFixture('client-cert.pem'),
+                'ssl_ca' => sslFixture('client-cert.pem'),
             ]))));
         } catch (ConnectionException $e) {
             $exception = $e;
@@ -144,7 +146,7 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
         try {
             await(Connection::create(PgSqlConfig::fromArray(sslConfig([
                 'sslmode' => 'verify-full',
-                'ssl_ca'  => sslFixture('server-cert.pem'),
+                'ssl_ca' => sslFixture('server-cert.pem'),
             ]))));
         } catch (ConnectionException $e) {
             $exception = $e;
@@ -154,7 +156,6 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
             ->and($exception->getMessage())->toMatch('/certificate/i')
         ;
     });
-
 
     it('falls back gracefully without SSL when sslmode=prefer and SSL is available', function (): void {
         $conn = await(Connection::create(PgSqlConfig::fromArray(sslConfig([
@@ -178,11 +179,11 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
 
     it('fails mTLS when cert and key do not match', function (): void {
         $mismatchedKeyPath = sslFixture('server-key.pem');
-        $tmpKey            = null;
+        $tmpKey = null;
 
         $perms = fileperms($mismatchedKeyPath);
         if ($perms !== false && ($perms & 0x003C) !== 0) {
-            $tmpKey            = sslTmpCopy($mismatchedKeyPath, 0600);
+            $tmpKey = sslTmpCopy($mismatchedKeyPath, 0600);
             $mismatchedKeyPath = $tmpKey;
         }
 
@@ -190,9 +191,9 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
 
         try {
             await(Connection::create(PgSqlConfig::fromArray(sslConfig([
-                'sslmode'  => 'require',
+                'sslmode' => 'require',
                 'ssl_cert' => sslFixture('client-cert.pem'),
-                'ssl_key'  => $mismatchedKeyPath,
+                'ssl_key' => $mismatchedKeyPath,
             ]))));
         } catch (ConnectionException $e) {
             $exception = $e;
@@ -210,7 +211,7 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
 
         try {
             await(Connection::create(PgSqlConfig::fromArray(sslConfig([
-                'sslmode'  => 'require',
+                'sslmode' => 'require',
                 'ssl_cert' => sslFixture('client-cert.pem'),
                 // ssl_key intentionally omitted
             ]))));
@@ -226,15 +227,15 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
         // (must be 0600 or stricter). This test copies the key to a real Linux
         // tmpfs path where chmod is enforced, then deliberately sets 0644.
         $keyPath = sslFixture('client-key.pem');
-        $tmpKey  = sslTmpCopy($keyPath, 0644); // deliberately too open
+        $tmpKey = sslTmpCopy($keyPath, 0644); // deliberately too open
 
         $exception = null;
 
         try {
             await(Connection::create(PgSqlConfig::fromArray(sslConfig([
-                'sslmode'  => 'require',
+                'sslmode' => 'require',
                 'ssl_cert' => sslFixture('client-cert.pem'),
-                'ssl_key'  => $tmpKey,
+                'ssl_key' => $tmpKey,
             ]))));
         } catch (ConnectionException $e) {
             $exception = $e;
@@ -254,9 +255,9 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
 
         try {
             $conn = await(Connection::create(PgSqlConfig::fromArray(sslConfig([
-                'sslmode'  => 'require',
+                'sslmode' => 'require',
                 'ssl_cert' => '/tmp/does_not_exist_cert.pem',
-                'ssl_key'  => sslFixture('client-key.pem'),
+                'ssl_key' => sslFixture('client-key.pem'),
             ]))));
         } catch (ConnectionException) {
             // Also acceptable libpq may validate the path eagerly in some builds.
@@ -266,17 +267,17 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
             expect($conn->isReady())->toBeTrue();
             $conn->close();
         } else {
-            expect(true)->toBeTrue(); 
+            expect(true)->toBeTrue();
         }
     });
 
     it('fails when ssl_cert is provided but the server key does not match and server enforces mTLS', function (): void {
         $mismatchedKey = sslFixture('server-key.pem');
-        $tmpKey        = null;
+        $tmpKey = null;
 
         $perms = fileperms($mismatchedKey);
         if ($perms !== false && ($perms & 0x003C) !== 0) {
-            $tmpKey        = sslTmpCopy($mismatchedKey, 0600);
+            $tmpKey = sslTmpCopy($mismatchedKey, 0600);
             $mismatchedKey = $tmpKey;
         }
 
@@ -284,9 +285,9 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
 
         try {
             await(Connection::create(PgSqlConfig::fromArray(sslConfig([
-                'sslmode'  => 'require',
+                'sslmode' => 'require',
                 'ssl_cert' => sslFixture('client-cert.pem'),
-                'ssl_key'  => $mismatchedKey, 
+                'ssl_key' => $mismatchedKey,
             ]))));
         } catch (ConnectionException $e) {
             $exception = $e;
@@ -308,7 +309,7 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
         try {
             await(Connection::create(PgSqlConfig::fromArray(sslConfig([
                 'sslmode' => 'verify-ca',
-                'ssl_ca'  => $tmpCa,
+                'ssl_ca' => $tmpCa,
             ]))));
         } catch (ConnectionException $e) {
             $exception = $e;
@@ -323,16 +324,16 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
 
     it('fails when ssl_cert is a corrupt / non-PEM file', function (): void {
         $tmpCert = sys_get_temp_dir() . '/hibla_corrupt_cert_' . getmypid() . '.pem';
-        $tmpKey  = sslTmpCopy(sslFixture('client-key.pem'), 0600);
+        $tmpKey = sslTmpCopy(sslFixture('client-key.pem'), 0600);
         file_put_contents($tmpCert, 'not a certificate');
 
         $exception = null;
 
         try {
             await(Connection::create(PgSqlConfig::fromArray(sslConfig([
-                'sslmode'  => 'require',
+                'sslmode' => 'require',
                 'ssl_cert' => $tmpCert,
-                'ssl_key'  => $tmpKey,
+                'ssl_key' => $tmpKey,
             ]))));
         } catch (ConnectionException $e) {
             $exception = $e;
@@ -347,14 +348,13 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
         expect($exception)->toBeInstanceOf(ConnectionException::class);
     });
 
-
     it('marks the connection as closed after an SSL handshake failure', function (): void {
         $conn = null;
 
         try {
             $conn = new Connection(PgSqlConfig::fromArray(sslConfig([
                 'sslmode' => 'verify-full',
-                'ssl_ca'  => sslFixture('client-cert.pem'), // wrong CA — will fail
+                'ssl_ca' => sslFixture('client-cert.pem'), // wrong CA — will fail
             ])));
 
             await($conn->connect());
@@ -368,7 +368,7 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
     it('rejects subsequent commands after an SSL failure without a new connect', function (): void {
         $conn = new Connection(PgSqlConfig::fromArray(sslConfig([
             'sslmode' => 'verify-full',
-            'ssl_ca'  => sslFixture('client-cert.pem'), // wrong CA
+            'ssl_ca' => sslFixture('client-cert.pem'), // wrong CA
         ])));
 
         try {
@@ -403,7 +403,7 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
             (function (): void {
                 $conn = new Connection(PgSqlConfig::fromArray(sslConfig([
                     'sslmode' => 'verify-full',
-                    'ssl_ca'  => sslFixture('client-cert.pem'),
+                    'ssl_ca' => sslFixture('client-cert.pem'),
                 ])));
 
                 try {
@@ -412,7 +412,7 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
                     // expected — $conn goes out of scope and __destruct fires
                 }
             })();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $exception = $e;
         }
 
@@ -422,7 +422,7 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
     it('fromArray ignores ssl_ca when the value is not a string', function (): void {
         $config = PgSqlConfig::fromArray(sslConfig([
             'sslmode' => 'require',
-            'ssl_ca'  => 12345, // non-string must be silently dropped
+            'ssl_ca' => 12345, // non-string must be silently dropped
         ]));
 
         expect($config->sslCa)->toBeNull();
@@ -431,7 +431,7 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
     it('fromUri parses ssl parameters from the query string correctly', function (): void {
         $caPath = sslFixture('ca.pem');
 
-        $uri    = sprintf(
+        $uri = sprintf(
             'postgresql://postgres:postgres@127.0.0.1:5444/postgres?sslmode=verify-full&ssl_ca=%s',
             urlencode($caPath)
         );
@@ -445,10 +445,10 @@ describe('PostgreSQL SSL/TLS Connection', function (): void {
 
     it('withQueryCancellation preserves all SSL fields', function (): void {
         $original = PgSqlConfig::fromArray(sslConfig([
-            'sslmode'  => 'verify-full',
-            'ssl_ca'   => sslFixture('ca.pem'),
+            'sslmode' => 'verify-full',
+            'ssl_ca' => sslFixture('ca.pem'),
             'ssl_cert' => sslFixture('client-cert.pem'),
-            'ssl_key'  => sslFixture('client-key.pem'),
+            'ssl_key' => sslFixture('client-key.pem'),
         ]));
 
         $copy = $original->withQueryCancellation(true);
