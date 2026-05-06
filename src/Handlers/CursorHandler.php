@@ -147,8 +147,6 @@ final class CursorHandler
         }
     }
 
-    // ── Phase step handlers ───────────────────────────────────────────────────
-
     private function stepBegin(PgSqlResult $res): void
     {
         @pg_free_result($res);

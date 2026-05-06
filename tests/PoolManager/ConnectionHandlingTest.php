@@ -7,6 +7,7 @@ use Hibla\Postgres\Exceptions\PoolException;
 use Hibla\Postgres\Internals\Connection;
 use Hibla\Postgres\Manager\PoolManager;
 use Hibla\Postgres\ValueObjects\PgSqlConfig;
+use Hibla\Sql\Exceptions\TimeoutException;
 
 use function Hibla\async;
 use function Hibla\await;
@@ -247,7 +248,7 @@ describe('Acquire Timeout', function (): void {
 
         try {
             await($pool->get());
-        } catch (Hibla\Promise\Exceptions\TimeoutException $e) {
+        } catch (TimeoutException $e) {
             $exception = $e;
         }
 

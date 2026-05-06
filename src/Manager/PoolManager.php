@@ -10,9 +10,9 @@ use Hibla\Postgres\Interfaces\ConnectionSetup as ConnectionSetupInterface;
 use Hibla\Postgres\Internals\Connection as PgConnection;
 use Hibla\Postgres\Internals\ConnectionSetup;
 use Hibla\Postgres\ValueObjects\PgSqlConfig;
-use Hibla\Promise\Exceptions\TimeoutException;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
+use Hibla\Sql\Exceptions\TimeoutException;
 use InvalidArgumentException;
 use SplQueue;
 use Throwable;
@@ -385,16 +385,13 @@ class PoolManager
             $timeout = $this->acquireTimeout;
             $timerId = Loop::addTimer($timeout, static function () use ($waiterPromise, $timeout): void {
                 if ($waiterPromise->isPending()) {
-                    $waiterPromise->reject(new TimeoutException($timeout));
+                    $waiterPromise->reject(new TimeoutException("Acquire timeout of {$timeout}s exceeded"));
                 }
             });
 
-            // Cancel the timer regardless of outcome.
-            // Notice: no $this captured here, allowing perfect Garbage Collection.
             $waiterPromise->finally(static function () use ($timerId): void {
                 Loop::cancelTimer($timerId);
             })->catch(static function (): void {
-                // Ignore — only fired to clean up the timer.
             });
         }
 
@@ -868,7 +865,7 @@ class PoolManager
                 // it ran at connect time.
                 $this->runOnConnectHook($connection)->then(
                     fn () => $this->releaseClean($connection),
-                    function () use ($connection): void {
+                    function (Throwable $e) use ($connection): void {
                         // Hook failed after reset — unknown session state, drop it.
                         $this->removeConnection($connection);
                         $this->satisfyNextWaiter();
@@ -1173,7 +1170,7 @@ class PoolManager
             $this->ensureMinConnections();
         }
 
-        // Always check — this is a no-op when not in graceful shutdown.
+        // Always check and this is a no-op when not in graceful shutdown.
         $this->checkShutdownComplete();
     }
 
