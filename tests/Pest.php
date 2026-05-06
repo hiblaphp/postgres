@@ -4,6 +4,7 @@ declare(strict_types=1);
 
 use Hibla\Postgres\Internals\Connection;
 use Hibla\Postgres\Manager\PoolManager;
+use Hibla\Postgres\PostgresClient;
 use Hibla\Postgres\ValueObjects\PgSqlConfig;
 
 use function Hibla\await;
@@ -84,5 +85,26 @@ function makePool(
         maxWaiters: $maxWaiters,
         acquireTimeout: $acquireTimeout,
         onConnect: $onConnect,
+    );
+}
+
+/**
+ * @param array<string, mixed> $overrides
+ */
+function makeClient(array $overrides = []): PostgresClient
+{
+    return new PostgresClient(
+        config: pgConfig(),
+        maxConnections: $overrides['maxConnections'] ?? 5,
+        minConnections: $overrides['minConnections'] ?? 0,
+        idleTimeout: $overrides['idleTimeout'] ?? 60,
+        maxLifetime: $overrides['maxLifetime'] ?? 3600,
+        statementCacheSize: $overrides['statementCacheSize'] ?? 16,
+        enableStatementCache: $overrides['enableStatementCache'] ?? true,
+        maxWaiters: $overrides['maxWaiters'] ?? 0,
+        acquireTimeout: $overrides['acquireTimeout'] ?? 10.0,
+        enableServerSideCancellation: $overrides['enableServerSideCancellation'] ?? true,
+        resetConnection: $overrides['resetConnection'] ?? false,
+        onConnect: $overrides['onConnect'] ?? null,
     );
 }
