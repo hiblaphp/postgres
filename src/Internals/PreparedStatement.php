@@ -36,7 +36,7 @@ class PreparedStatement implements PreparedStatementInterface
     /**
      * {@inheritdoc}
      *
-     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlResult>
+     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PostgresResult>
      */
     public function execute(array $params = []): PromiseInterface
     {
@@ -50,15 +50,15 @@ class PreparedStatement implements PreparedStatementInterface
     /**
      * {@inheritdoc}
      *
-     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlRowStream>
+     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PostgresRowStream>
      */
-    public function executeStream(array $params = []): PromiseInterface
+    public function executeStream(array $params = [], int $bufferSize = 100): PromiseInterface
     {
         if ($this->isClosed) {
             throw new PreparedException('Cannot execute a closed prepared statement.');
         }
 
-        return $this->connection->executeStatementStream($this, $params);
+        return $this->connection->executeStatementStream($this, $params, $bufferSize);
     }
 
     /**

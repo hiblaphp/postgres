@@ -166,11 +166,11 @@ class Connection implements ConnectionBridge
      * Executes a plain SQL query and returns the full buffered result.
      * Do NOT pass user-supplied values directly — use prepare() + executeStatement() instead.
      *
-     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlResult>
+     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PostgresResult>
      */
     public function query(string $sql): PromiseInterface
     {
-        /** @var PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlResult> $promise */
+        /** @var PromiseInterface<\Hibla\Postgres\Interfaces\PostgresResult> $promise */
         $promise = $this->enqueueCommand(CommandRequest::TYPE_QUERY, $sql);
 
         return $promise;
@@ -179,7 +179,7 @@ class Connection implements ConnectionBridge
     /**
      * Streams a plain SQL query row-by-row.
      *
-     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlRowStream>
+     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PostgresRowStream>
      */
     public function streamQuery(string $sql, int $bufferSize = 100): PromiseInterface
     {
@@ -233,11 +233,11 @@ class Connection implements ConnectionBridge
     /**
      * @param array<string|int, mixed> $params
      *
-     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlResult>
+     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PostgresResult>
      */
     public function executeStatement(PreparedStatement $stmt, array $params): PromiseInterface
     {
-        /** @var PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlResult> $promise */
+        /** @var PromiseInterface<\Hibla\Postgres\Interfaces\PostgresResult> $promise */
         $promise = $this->enqueueCommand(
             CommandRequest::TYPE_EXECUTE,
             $stmt->name,
@@ -250,7 +250,7 @@ class Connection implements ConnectionBridge
     /**
      * @param array<string|int, mixed> $params
      *
-     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PgSqlRowStream>
+     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PostgresRowStream>
      */
     public function executeStatementStream(PreparedStatement $stmt, array $params, int $bufferSize = 100): PromiseInterface
     {

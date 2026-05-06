@@ -11,7 +11,7 @@ use Hibla\Sql\RowStream;
  * Provides an asynchronous stream of rows for PostgreSQL.
  * Uses pg_set_single_row_mode() internally.
  */
-interface PgSqlRowStream extends RowStream, CancellableStreamInterface
+interface PostgresRowStream extends RowStream, CancellableStreamInterface
 {
     /**
      * Cancels the stream and releases resources.

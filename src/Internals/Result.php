@@ -4,14 +4,14 @@ declare(strict_types=1);
 
 namespace Hibla\Postgres\Internals;
 
-use Hibla\Postgres\Interfaces\PgSqlResult;
+use Hibla\Postgres\Interfaces\PostgresResult;
 
 /**
  * Unified result object for PostgreSQL queries.
  *
  * @internal
  */
-class Result implements PgSqlResult
+class Result implements PostgresResult
 {
     /**
      * @inheritDoc
@@ -25,7 +25,7 @@ class Result implements PgSqlResult
 
     private int $position = 0;
 
-    private ?PgSqlResult $nextResult = null;
+    private ?PostgresResult $nextResult = null;
 
     /**
      * @param int $affectedRows
@@ -52,7 +52,7 @@ class Result implements PgSqlResult
      *
      * Links the next result set to this one.
      */
-    public function setNextResult(PgSqlResult $result): void
+    public function setNextResult(PostgresResult $result): void
     {
         $this->nextResult = $result;
     }
@@ -60,7 +60,7 @@ class Result implements PgSqlResult
     /**
      * @inheritDoc
      */
-    public function nextResult(): ?PgSqlResult
+    public function nextResult(): ?PostgresResult
     {
         return $this->nextResult;
     }

@@ -22,7 +22,7 @@ interface ConnectionSetup
      * Runs a SQL query and resolves with the full result.
      * Use this when you need to inspect the result (rows, affected rows, etc.).
      *
-     * @return PromiseInterface<PgSqlResult>
+     * @return PromiseInterface<PostgresResult>
      */
     public function query(string $sql): PromiseInterface;
 

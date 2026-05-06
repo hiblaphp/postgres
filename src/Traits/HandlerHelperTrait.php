@@ -37,7 +37,7 @@ trait HandlerHelperTrait
     {
         /** @var array<string, string|null> */
         return array_combine(
-            array_map(strval(...), array_keys($row)),
+            array_map(\strval(...), array_keys($row)),
             array_values($row)
         );
     }

@@ -19,6 +19,7 @@
         "hiblaphp/event-loop": "^1.0",
         "hiblaphp/promise": "^1.0",
         "hiblaphp/async": "^1.0",
+        "hiblaphp/cache": "^1.0",
         "hiblaphp/sql":"^1.0"
     },
     "require-dev": {

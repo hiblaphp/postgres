@@ -12,7 +12,7 @@ use Hibla\Postgres\Internals\Result;
 use Hibla\Postgres\Traits\HandlerHelperTrait;
 use Hibla\Sql\Exceptions\ConnectionException;
 use Hibla\Sql\Exceptions\QueryException;
-use PgSql\Result as PgSqlResult;
+use PgSql\Result as PostgresResult;
 
 /**
  * @internal Consumes query results from libpq's buffer.
@@ -208,11 +208,11 @@ final class QueryResultHandler
     /**
      * Narrows a PgSql\Result|resource to PgSql\Result.
      *
-     * @param PgSqlResult|resource $res
+     * @param PostgresResult|resource $res
      */
-    private function getTypedResult(mixed $res): PgSqlResult
+    private function getTypedResult(mixed $res): PostgresResult
     {
-        assert($res instanceof PgSqlResult);
+        assert($res instanceof PostgresResult);
 
         return $res;
     }

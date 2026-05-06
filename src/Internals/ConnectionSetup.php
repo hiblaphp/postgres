@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Hibla\Postgres\Internals;
 
 use Hibla\Postgres\Interfaces\ConnectionSetup as ConnectionSetupInterface;
-use Hibla\Postgres\Interfaces\PgSqlResult;
+use Hibla\Postgres\Interfaces\PostgresResult;
 use Hibla\Promise\Interfaces\PromiseInterface;
 
 /**
@@ -24,7 +24,7 @@ final class ConnectionSetup implements ConnectionSetupInterface
     /**
      * {@inheritdoc}
      *
-     * @return PromiseInterface<PgSqlResult>
+     * @return PromiseInterface<PostgresResult>
      */
     public function query(string $sql): PromiseInterface
     {
@@ -39,7 +39,7 @@ final class ConnectionSetup implements ConnectionSetupInterface
     public function execute(string $sql): PromiseInterface
     {
         return $this->connection->query($sql)
-            ->then(fn (PgSqlResult $result) => $result->affectedRows)
+            ->then(fn (PostgresResult $result) => $result->affectedRows)
         ;
     }
 }

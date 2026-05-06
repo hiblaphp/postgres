@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Hibla\Postgres\Internals;
 
-use Hibla\Postgres\Interfaces\PgSqlRowStream;
+use Hibla\Postgres\Interfaces\PostgresRowStream;
 use Hibla\Postgres\Interfaces\StreamContext;
 use Hibla\Promise\Exceptions\CancelledException;
 use Hibla\Promise\Interfaces\PromiseInterface;
@@ -17,7 +17,7 @@ use function Hibla\await;
 /**
  * @internal
  */
-class RowStream implements PgSqlRowStream, StreamContext
+class RowStream implements PostgresRowStream, StreamContext
 {
     /**
      * @var SplQueue<array<string, string|null>>
@@ -83,6 +83,10 @@ class RowStream implements PgSqlRowStream, StreamContext
 
     public function __construct(public readonly int $bufferSize = 100)
     {
+        if ($this->bufferSize <= 0) {
+            throw new \InvalidArgumentException('Buffer size must be greater than 0.');
+        }
+
         $this->buffer = new SplQueue();
     }
 
@@ -94,6 +98,23 @@ class RowStream implements PgSqlRowStream, StreamContext
     public function setResumeCallback(\Closure $callback): void
     {
         $this->resumeCallback = $callback;
+    }
+
+    /**
+     * Returns a promise that resolves when the underlying database command is fully complete
+     * and the connection is ready to be released back to the pool.
+     *
+     * @return PromiseInterface<mixed>
+     *
+     * @internal
+     */
+    public function waitForCommand(): PromiseInterface
+    {
+        if ($this->commandPromise === null) {
+            throw new \RuntimeException('Command promise not bound to stream.');
+        }
+
+        return $this->commandPromise;
     }
 
     /**

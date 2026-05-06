@@ -9,7 +9,7 @@ use Hibla\Postgres\Interfaces\ConnectionBridge;
 use Hibla\Postgres\Internals\ConnectionContext;
 use Hibla\Postgres\Traits\HandlerHelperTrait;
 use Hibla\Sql\Exceptions\QueryException;
-use PgSql\Result as PgSqlResult;
+use PgSql\Result as PostgresResult;
 use Throwable;
 
 /**
@@ -147,7 +147,7 @@ final class CursorHandler
         }
     }
 
-    private function stepBegin(PgSqlResult $res): void
+    private function stepBegin(PostgresResult $res): void
     {
         @pg_free_result($res);
         $this->ctx->cursor->phase = CursorPhase::Declare;
@@ -159,14 +159,14 @@ final class CursorHandler
         }
     }
 
-    private function stepDeclare(PgSqlResult $res): void
+    private function stepDeclare(PostgresResult $res): void
     {
         @pg_free_result($res);
         $this->ctx->cursor->phase = CursorPhase::Fetch;
         $this->sendFetch();
     }
 
-    private function stepFetch(PgSqlResult $res): void
+    private function stepFetch(PostgresResult $res): void
     {
         $context = $this->ctx->currentStreamContext();
         $rowCount = pg_num_rows($res);
@@ -194,7 +194,7 @@ final class CursorHandler
         $this->sendFetch();
     }
 
-    private function stepClose(PgSqlResult $res): void
+    private function stepClose(PostgresResult $res): void
     {
         $conn = $this->getTypedConnection();
         $context = $this->ctx->currentStreamContext();
@@ -214,7 +214,7 @@ final class CursorHandler
         $this->bridge->finishCommand(null, null);
     }
 
-    private function stepRollback(PgSqlResult $res): void
+    private function stepRollback(PostgresResult $res): void
     {
         @pg_free_result($res);
         $error = $this->ctx->cursor->error;

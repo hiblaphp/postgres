@@ -9,7 +9,7 @@ use Hibla\Sql\MultiResult;
 /**
  * Extends the core Result interface with PostgreSQL-specific metadata.
  */
-interface PgSqlResult extends MultiResult
+interface PostgresResult extends MultiResult
 {
     /**
      * The connection process ID (PID) associated with the executed query.
