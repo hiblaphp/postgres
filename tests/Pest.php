@@ -51,13 +51,14 @@ function awaitCancelDrain(Connection $conn): void
 
 function pgPoolConfig(array $overrides = []): array
 {
-    return array_merge([
+    return [
         'host' => $_ENV['POSTGRES_HOST'] ?? '127.0.0.1',
         'port' => (int) ($_ENV['POSTGRES_PORT'] ?? 5443),
         'database' => $_ENV['POSTGRES_DATABASE'] ?? 'postgres',
         'username' => $_ENV['POSTGRES_USERNAME'] ?? 'postgres',
         'password' => $_ENV['POSTGRES_PASSWORD'] ?? 'postgres',
-    ], $overrides);
+        ...$overrides,
+    ];
 }
 
 function makePool(
@@ -73,7 +74,7 @@ function makePool(
 ): PoolManager {
     return new PoolManager(
         config: pgPoolConfig([
-            'reset_connection'               => $resetConnection,
+            'reset_connection' => $resetConnection,
             'enable_server_side_cancellation' => $enableServerSideCancellation,
         ]),
         maxSize: $maxSize,

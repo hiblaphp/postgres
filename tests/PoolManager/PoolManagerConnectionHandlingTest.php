@@ -11,7 +11,6 @@ use function Hibla\async;
 use function Hibla\await;
 use function Hibla\delay;
 
-
 describe('Basic Acquisition and Release', function (): void {
 
     it('acquires a ready connection from the pool', function (): void {
@@ -31,11 +30,11 @@ describe('Basic Acquisition and Release', function (): void {
         $pool = makePool(maxSize: 1);
 
         $conn1 = await($pool->get());
-        $pid1  = $conn1->getProcessId();
+        $pid1 = $conn1->getProcessId();
         $pool->release($conn1);
 
         $conn2 = await($pool->get());
-        $pid2  = $conn2->getProcessId();
+        $pid2 = $conn2->getProcessId();
 
         expect($pid1)->toBe($pid2);
 
@@ -59,7 +58,7 @@ describe('Basic Acquisition and Release', function (): void {
     it('executes queries on borrowed connections', function (): void {
         $pool = makePool();
 
-        $conn   = await($pool->get());
+        $conn = await($pool->get());
         $result = await($conn->query('SELECT 42 AS val'));
 
         expect((int) $result->fetchOne()['val'])->toBe(42);
@@ -87,7 +86,7 @@ describe('Basic Acquisition and Release', function (): void {
     });
 
     it('removes a non-ready connection on release', function (): void {
-        $pool  = makePool(maxSize: 1);
+        $pool = makePool(maxSize: 1);
         $statsBefore = $pool->stats;
 
         $conn = await($pool->get());
@@ -127,16 +126,16 @@ describe('Pool Size Enforcement', function (): void {
     it('respects maxWaiters and rejects excess requests immediately', function (): void {
         $pool = makePool(maxSize: 1, maxWaiters: 1);
 
-        $conn    = await($pool->get());
+        $conn = await($pool->get());
         $waiter1 = $pool->get();
 
         $exception = null;
 
         try {
             await($pool->get());
-        } catch (\Hibla\Postgres\Exceptions\PoolException $e) {
+        } catch (Hibla\Postgres\Exceptions\PoolException $e) {
             $exception = $e;
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $exception = $e;
         }
 
@@ -157,7 +156,7 @@ describe('Pool Size Enforcement', function (): void {
 
         try {
             await($pool->get());
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $exception = $e;
         }
 
@@ -204,7 +203,7 @@ describe('Idle Timeout and Max Lifetime', function (): void {
         $pool = makePool(maxSize: 2, idleTimeout: 1);
 
         $conn = await($pool->get());
-        $pid  = $conn->getProcessId();
+        $pid = $conn->getProcessId();
         $pool->release($conn);
 
         await(delay(1.5));
@@ -221,7 +220,7 @@ describe('Idle Timeout and Max Lifetime', function (): void {
         $pool = makePool(maxSize: 1, maxLifetime: 1);
 
         $conn = await($pool->get());
-        $pid  = $conn->getProcessId();
+        $pid = $conn->getProcessId();
         $pool->release($conn);
 
         await(delay(1.5));
@@ -243,11 +242,11 @@ describe('Acquire Timeout', function (): void {
         $conn = await($pool->get());
 
         $exception = null;
-        $start     = microtime(true);
+        $start = microtime(true);
 
         try {
             await($pool->get());
-        } catch (\Hibla\Promise\Exceptions\TimeoutException $e) {
+        } catch (Hibla\Promise\Exceptions\TimeoutException $e) {
             $exception = $e;
         }
 
@@ -266,7 +265,7 @@ describe('Acquire Timeout', function (): void {
 
         $waiter = $pool->get();
 
-        Loop::addTimer(0.1, fn() => $pool->release($conn));
+        Loop::addTimer(0.1, fn () => $pool->release($conn));
 
         $conn2 = await($waiter);
 
@@ -279,7 +278,7 @@ describe('Acquire Timeout', function (): void {
     it('skips cancelled waiters and serves the next one in queue', function (): void {
         $pool = makePool(maxSize: 1);
 
-        $conn    = await($pool->get());
+        $conn = await($pool->get());
         $waiter1 = $pool->get();
         $waiter2 = $pool->get();
 
@@ -301,20 +300,20 @@ describe('Acquire Timeout', function (): void {
 describe('Concurrent Load', function (): void {
 
     it('handles N concurrent borrows and releases correctly', function (): void {
-        $pool      = makePool(maxSize: 5);
-        $promises  = [];
-        $results   = [];
+        $pool = makePool(maxSize: 5);
+        $promises = [];
+        $results = [];
 
         for ($i = 0; $i < 10; $i++) {
             $promises[] = async(function () use ($pool, &$results): void {
-                $conn   = await($pool->get());
+                $conn = await($pool->get());
                 $result = await($conn->query('SELECT pg_backend_pid() AS pid'));
                 $results[] = (int) $result->fetchOne()['pid'];
                 $pool->release($conn);
             });
         }
 
-        await(\Hibla\Promise\Promise::all($promises));
+        await(Hibla\Promise\Promise::all($promises));
 
         expect(\count($results))->toBe(10);
 
@@ -322,7 +321,7 @@ describe('Concurrent Load', function (): void {
     });
 
     it('never exceeds maxSize active connections under concurrent load', function (): void {
-        $pool       = makePool(maxSize: 3);
+        $pool = makePool(maxSize: 3);
         $maxObserved = 0;
 
         $promises = [];
@@ -339,7 +338,7 @@ describe('Concurrent Load', function (): void {
             });
         }
 
-        await(\Hibla\Promise\Promise::all($promises));
+        await(Hibla\Promise\Promise::all($promises));
 
         expect($maxObserved)->toBeLessThanOrEqual(3);
 
@@ -370,7 +369,7 @@ describe('Health Check', function (): void {
     it('reports a closed connection as unhealthy and removes it', function (): void {
         $pool = makePool(maxSize: 2);
 
-        $conn  = await($pool->get());
+        $conn = await($pool->get());
         $conn2 = await($pool->get());
 
         $pool->release($conn);
@@ -389,8 +388,8 @@ describe('Health Check', function (): void {
     });
 
     it('returns an empty stats array when the pool has no idle connections', function (): void {
-        $pool  = makePool(maxSize: 1);
-        $conn  = await($pool->get());
+        $pool = makePool(maxSize: 1);
+        $conn = await($pool->get());
 
         $stats = await($pool->healthCheck());
 
@@ -431,7 +430,7 @@ describe('onConnect Hook', function (): void {
         $pool = makePool(
             maxSize: 1,
             onConnect: function (): void {
-                throw new \RuntimeException('hook failure');
+                throw new RuntimeException('hook failure');
             }
         );
 
@@ -439,7 +438,7 @@ describe('onConnect Hook', function (): void {
 
         try {
             await($pool->get());
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $exception = $e;
         }
 
@@ -455,7 +454,7 @@ describe('onConnect Hook', function (): void {
 
         $pool = makePool(
             maxSize: 1,
-            onConnect: function () use (&$hookRan): \Hibla\Promise\Interfaces\PromiseInterface {
+            onConnect: function () use (&$hookRan): Hibla\Promise\Interfaces\PromiseInterface {
                 return async(function () use (&$hookRan): void {
                     await(delay(0.05));
                     $hookRan = true;
@@ -481,7 +480,7 @@ describe('Connection Reset', function (): void {
         await($conn->query("SET application_name = 'dirty_state'"));
         $pool->release($conn);
 
-        $conn2  = await($pool->get());
+        $conn2 = await($pool->get());
         $result = await($conn2->query('SHOW application_name'));
         $appName = $result->fetchOne()['application_name'];
 
@@ -547,8 +546,8 @@ describe('Stats', function (): void {
     it('reflects waiting_requests when pool is at capacity', function (): void {
         $pool = makePool(maxSize: 1);
 
-        $conn    = await($pool->get());
-        $waiter  = $pool->get();
+        $conn = await($pool->get());
+        $waiter = $pool->get();
 
         expect($pool->stats['waiting_requests'])->toBe(1);
 
@@ -578,11 +577,11 @@ describe('Shutdown', function (): void {
     it('close() rejects all pending waiters', function (): void {
         $pool = makePool(maxSize: 1);
 
-        $conn   = await($pool->get());
+        $conn = await($pool->get());
         $waiter = $pool->get();
 
         $exception = null;
-        $waiter->then(null, function (\Throwable $e) use (&$exception): void {
+        $waiter->then(null, function (Throwable $e) use (&$exception): void {
             $exception = $e;
         });
 
@@ -597,7 +596,7 @@ describe('Shutdown', function (): void {
     it('closeAsync() waits for active connections to finish before resolving', function (): void {
         $pool = makePool(maxSize: 1);
 
-        $conn    = await($pool->get());
+        $conn = await($pool->get());
         $settled = false;
 
         $shutdown = $pool->closeAsync()->then(function () use (&$settled): void {
@@ -614,7 +613,7 @@ describe('Shutdown', function (): void {
     });
 
     it('closeAsync() resolves immediately when pool is already idle', function (): void {
-        $pool  = makePool(maxSize: 1);
+        $pool = makePool(maxSize: 1);
         $start = microtime(true);
 
         await($pool->closeAsync());
@@ -636,8 +635,8 @@ describe('Shutdown', function (): void {
     });
 
     it('close() while closeAsync() is pending resolves the shutdown promise immediately', function (): void {
-        $pool     = makePool(maxSize: 1);
-        $conn     = await($pool->get());
+        $pool = makePool(maxSize: 1);
+        $conn = await($pool->get());
         $resolved = false;
 
         $shutdown = $pool->closeAsync()->then(function () use (&$resolved): void {
@@ -660,7 +659,7 @@ describe('Shutdown', function (): void {
 
         try {
             $pool->close();
-        } catch (\Throwable $e) {
+        } catch (Throwable $e) {
             $exception = $e;
         }
 
@@ -684,11 +683,11 @@ describe('Shutdown', function (): void {
 describe('PgSqlConfig Integration', function (): void {
 
     it('accepts a DSN string as config', function (): void {
-        $dsn  = sprintf(
+        $dsn = sprintf(
             'postgresql://%s:%s@%s:%d/%s',
             $_ENV['POSTGRES_USERNAME'] ?? 'postgres',
             $_ENV['POSTGRES_PASSWORD'] ?? 'postgres',
-            $_ENV['POSTGRES_HOST']     ?? '127.0.0.1',
+            $_ENV['POSTGRES_HOST'] ?? '127.0.0.1',
             (int) ($_ENV['POSTGRES_PORT'] ?? 5443),
             $_ENV['POSTGRES_DATABASE'] ?? 'postgres',
         );
@@ -704,8 +703,8 @@ describe('PgSqlConfig Integration', function (): void {
 
     it('accepts a PgSqlConfig object directly', function (): void {
         $config = PgSqlConfig::fromArray(pgPoolConfig());
-        $pool   = new PoolManager(config: $config, maxSize: 1);
-        $conn   = await($pool->get());
+        $pool = new PoolManager(config: $config, maxSize: 1);
+        $conn = await($pool->get());
 
         expect($conn->isReady())->toBeTrue();
 
@@ -730,25 +729,31 @@ describe('PgSqlConfig Integration', function (): void {
     });
 
     it('throws InvalidArgumentException for invalid constructor arguments', function (): void {
-        expect(fn() => new PoolManager(pgPoolConfig(), maxSize: 0))
-            ->toThrow(\InvalidArgumentException::class);
+        expect(fn () => new PoolManager(pgPoolConfig(), maxSize: 0))
+            ->toThrow(InvalidArgumentException::class)
+        ;
 
-        expect(fn() => new PoolManager(pgPoolConfig(), maxSize: 5, minSize: -1))
-            ->toThrow(\InvalidArgumentException::class);
+        expect(fn () => new PoolManager(pgPoolConfig(), maxSize: 5, minSize: -1))
+            ->toThrow(InvalidArgumentException::class)
+        ;
 
-        expect(fn() => new PoolManager(pgPoolConfig(), maxSize: 2, minSize: 5))
-            ->toThrow(\InvalidArgumentException::class);
+        expect(fn () => new PoolManager(pgPoolConfig(), maxSize: 2, minSize: 5))
+            ->toThrow(InvalidArgumentException::class)
+        ;
 
-        expect(fn() => new PoolManager(pgPoolConfig(), maxSize: 5, idleTimeout: 0))
-            ->toThrow(\InvalidArgumentException::class);
+        expect(fn () => new PoolManager(pgPoolConfig(), maxSize: 5, idleTimeout: 0))
+            ->toThrow(InvalidArgumentException::class)
+        ;
 
-        expect(fn() => new PoolManager(pgPoolConfig(), maxSize: 5, maxLifetime: 0))
-            ->toThrow(\InvalidArgumentException::class);
+        expect(fn () => new PoolManager(pgPoolConfig(), maxSize: 5, maxLifetime: 0))
+            ->toThrow(InvalidArgumentException::class)
+        ;
 
-        expect(fn() => new PoolManager(pgPoolConfig(), maxSize: 5, maxWaiters: -1))
-            ->toThrow(\InvalidArgumentException::class);
+        expect(fn () => new PoolManager(pgPoolConfig(), maxSize: 5, maxWaiters: -1))
+            ->toThrow(InvalidArgumentException::class)
+        ;
 
-        expect(fn() => new PoolManager(pgPoolConfig(), maxSize: 5, acquireTimeout: -1.0))
-            ->toThrow(\InvalidArgumentException::class);
+        expect(fn () => new PoolManager(pgPoolConfig(), maxSize: 5, acquireTimeout: -1.0))
+            ->toThrow(InvalidArgumentException::class);
     });
 });
