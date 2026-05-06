@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Hibla\Postgres\Internals\Connection;
+use Hibla\Postgres\Manager\PoolManager;
 use Hibla\Postgres\ValueObjects\PgSqlConfig;
 
 use function Hibla\await;
@@ -46,4 +47,41 @@ function awaitCancelDrain(Connection $conn): void
 {
     await($conn->ping());
     $conn->clearCancelledFlag();
+}
+
+function pgPoolConfig(array $overrides = []): array
+{
+    return array_merge([
+        'host' => $_ENV['POSTGRES_HOST'] ?? '127.0.0.1',
+        'port' => (int) ($_ENV['POSTGRES_PORT'] ?? 5443),
+        'database' => $_ENV['POSTGRES_DATABASE'] ?? 'postgres',
+        'username' => $_ENV['POSTGRES_USERNAME'] ?? 'postgres',
+        'password' => $_ENV['POSTGRES_PASSWORD'] ?? 'postgres',
+    ], $overrides);
+}
+
+function makePool(
+    int $maxSize = 5,
+    int $minSize = 0,
+    int $idleTimeout = 300,
+    int $maxLifetime = 3600,
+    int $maxWaiters = 0,
+    float $acquireTimeout = 0.0,
+    bool $enableServerSideCancellation = false,
+    bool $resetConnection = false,
+    ?callable $onConnect = null,
+): PoolManager {
+    return new PoolManager(
+        config: pgPoolConfig([
+            'reset_connection'               => $resetConnection,
+            'enable_server_side_cancellation' => $enableServerSideCancellation,
+        ]),
+        maxSize: $maxSize,
+        minSize: $minSize,
+        idleTimeout: $idleTimeout,
+        maxLifetime: $maxLifetime,
+        maxWaiters: $maxWaiters,
+        acquireTimeout: $acquireTimeout,
+        onConnect: $onConnect,
+    );
 }
