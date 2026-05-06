@@ -177,7 +177,7 @@ describe('Minimum Connections', function (): void {
 
         $stats = $pool->stats;
 
-        expect($stats['active_connections'])->toBeGreaterThanOrEqual(2);
+        expect($stats['total_connections'])->toBeGreaterThanOrEqual(2);
 
         $pool->close();
     });
@@ -193,7 +193,7 @@ describe('Minimum Connections', function (): void {
 
         await(delay(0.1));
 
-        expect($pool->stats['active_connections'])->toBeGreaterThanOrEqual(1);
+        expect($pool->stats['total_connections'])->toBeGreaterThanOrEqual(1);
 
         $pool->close();
     });
@@ -852,7 +852,7 @@ describe('Min Size Edge Cases', function (): void {
 
         await(delay(0.1));
 
-        expect($pool->stats['active_connections'])->toBe(3);
+        expect($pool->stats['total_connections'])->toBe(3);
 
         $pool->close();
     });

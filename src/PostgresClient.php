@@ -285,7 +285,15 @@ final class PostgresClient implements SqlClientInterface
     {
         return $this->withCancellation(
             $this->query($sql, $params)
-                ->then(fn (ResultInterface $result) => $result->lastInsertId)
+                ->then(function (ResultInterface $result) {
+                    $row = $result->fetchOne();
+
+                    if ($row !== null && \count($row) > 0) {
+                        return (int) reset($row);
+                    }
+
+                    return $result->lastInsertId;
+                })
         );
     }
 

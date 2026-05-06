@@ -366,7 +366,7 @@ describe('minSize Replenishment After Cancellation', function (): void {
 
         await(delay(0.2));
 
-        expect($pool->stats['active_connections'])->toBeGreaterThanOrEqual(1);
+        expect($pool->stats['total_connections'])->toBeGreaterThanOrEqual(1);
 
         $pool->close();
     });

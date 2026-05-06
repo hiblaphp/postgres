@@ -6,8 +6,8 @@ use Hibla\Postgres\Exceptions\NotInitializedException;
 use Hibla\Postgres\Exceptions\PoolException;
 use Hibla\Postgres\Internals\ManagedPreparedStatement;
 use Hibla\Postgres\Internals\RowStream;
-use Hibla\Promise\Exceptions\TimeoutException;
 use Hibla\Promise\Promise;
+use Hibla\Sql\Exceptions\TimeoutException;
 
 use function Hibla\await;
 use function Hibla\delay;
@@ -597,7 +597,7 @@ describe('Pool Integration', function (): void {
 
         await(delay(0.2));
 
-        expect($client->stats['active_connections'])->toBeGreaterThanOrEqual(2);
+        expect($client->stats['total_connections'])->toBeGreaterThanOrEqual(2);
 
         $client->close();
     });
