@@ -483,6 +483,15 @@ class PoolManager
 
         $this->isGracefulShutdown = true;
 
+        // Reject all pending waiters immediately, as no new work should begin.
+        $shuttingDownException = new PoolException('Pool is shutting down');
+        while (! $this->waiters->isEmpty()) {
+            $waiter = $this->waiters->dequeue();
+            if ($waiter->isPending()) {
+                $waiter->reject($shuttingDownException);
+            }
+        }
+
         while (! $this->pool->isEmpty()) {
             $connection = $this->pool->dequeue();
 
@@ -885,7 +894,9 @@ class PoolManager
     {
         $connId = spl_object_id($connection);
 
-        // Always try to serve existing waiters first, even during shutdown.
+        // Always try to serve existing waiters first.
+        // During graceful shutdown, the waiter queue will already be empty,
+        // so this will safely return null.
         $waiter = $this->dequeueActiveWaiter();
 
         if ($this->waiters->isEmpty()) {
@@ -1016,7 +1027,8 @@ class PoolManager
                             $promise->resolve($connection);
                         },
                         function (Throwable $e) use ($promise, $connection): void {
-                            $this->removeConnection($connection);
+                            // Do not replenish. This is an initialization failure, not a lost healthy connection.
+                            $this->removeConnection($connection, false);
                             $promise->reject($e);
                         }
                     );
@@ -1081,7 +1093,8 @@ class PoolManager
                             $waiter->resolve($connection);
                         },
                         function (Throwable $e) use ($connection, $waiter): void {
-                            $this->removeConnection($connection);
+                            // Do not replenish. Just fail to create a connection.
+                            $this->removeConnection($connection, false);
                             $waiter->reject($e);
                         }
                     );
@@ -1139,7 +1152,7 @@ class PoolManager
      * After removing the connection, calls checkShutdownComplete() so that
      * any in-progress graceful shutdown can detect the drained state.
      */
-    private function removeConnection(PgConnection $connection): void
+    private function removeConnection(PgConnection $connection, bool $replenish = true): void
     {
         if (! $connection->isClosed()) {
             $connection->close();
@@ -1156,7 +1169,7 @@ class PoolManager
         $this->activeConnections--;
 
         // Only replenish during normal operation.
-        if (! $this->isClosing && ! $this->isGracefulShutdown) {
+        if ($replenish && ! $this->isClosing && ! $this->isGracefulShutdown) {
             $this->ensureMinConnections();
         }
 

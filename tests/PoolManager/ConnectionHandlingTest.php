@@ -3,6 +3,7 @@
 declare(strict_types=1);
 
 use Hibla\EventLoop\Loop;
+use Hibla\Postgres\Exceptions\PoolException;
 use Hibla\Postgres\Internals\Connection;
 use Hibla\Postgres\Manager\PoolManager;
 use Hibla\Postgres\ValueObjects\PgSqlConfig;
@@ -133,7 +134,7 @@ describe('Pool Size Enforcement', function (): void {
 
         try {
             await($pool->get());
-        } catch (Hibla\Postgres\Exceptions\PoolException $e) {
+        } catch (PoolException $e) {
             $exception = $e;
         } catch (Throwable $e) {
             $exception = $e;
@@ -754,6 +755,365 @@ describe('PgSqlConfig Integration', function (): void {
         ;
 
         expect(fn () => new PoolManager(pgPoolConfig(), maxSize: 5, acquireTimeout: -1.0))
-            ->toThrow(InvalidArgumentException::class);
+            ->toThrow(InvalidArgumentException::class)
+        ;
+    });
+});
+
+describe('Waiter Queue Ordering', function (): void {
+
+    it('serves waiters in strict FIFO order as connections are released', function (): void {
+        $pool = makePool(maxSize: 1);
+
+        $conn = await($pool->get());
+        $servedOrder = [];
+
+        $waiter1 = $pool->get()->then(function ($c) use (&$servedOrder, $pool): void {
+            $servedOrder[] = 1;
+            $pool->release($c);
+        });
+        $waiter2 = $pool->get()->then(function ($c) use (&$servedOrder, $pool): void {
+            $servedOrder[] = 2;
+            $pool->release($c);
+        });
+        $waiter3 = $pool->get()->then(function ($c) use (&$servedOrder, $pool): void {
+            $servedOrder[] = 3;
+            $pool->release($c);
+        });
+
+        $pool->release($conn);
+
+        await(Hibla\Promise\Promise::all([$waiter1, $waiter2, $waiter3]));
+
+        expect($servedOrder)->toBe([1, 2, 3]);
+
+        $pool->close();
+    });
+});
+
+describe('Post-Close Behavior', function (): void {
+
+    it('rejects get() immediately after force close()', function (): void {
+        $pool = makePool();
+        $pool->close();
+
+        $exception = null;
+
+        try {
+            await($pool->get());
+        } catch (Throwable $e) {
+            $exception = $e;
+        }
+
+        expect($exception)->toBeInstanceOf(PoolException::class);
+    });
+
+    it('calling close() twice is safe and leaves stats at zero', function (): void {
+        $pool = makePool(maxSize: 2);
+
+        $conn = await($pool->get());
+        $pool->release($conn);
+
+        $pool->close();
+        $pool->close();
+
+        expect($pool->stats['active_connections'])->toBe(0)
+            ->and($pool->stats['pooled_connections'])->toBe(0)
+        ;
+    });
+});
+
+describe('Max Lifetime Eviction on Release', function (): void {
+
+    it('drops a connection that exceeded maxLifetime when parking it back in the idle pool', function (): void {
+        $pool = makePool(maxSize: 1, maxLifetime: 1);
+
+        $conn = await($pool->get());
+        $pid = $conn->getProcessId();
+
+        await(delay(1.5));
+
+        $pool->release($conn);
+
+        $conn2 = await($pool->get());
+
+        expect($conn2->getProcessId())->not->toBe($pid);
+
+        $pool->release($conn2);
+        $pool->close();
+    });
+});
+
+describe('Min Size Edge Cases', function (): void {
+
+    it('pre-fills the pool completely when minSize equals maxSize', function (): void {
+        $pool = makePool(maxSize: 3, minSize: 3);
+
+        await(delay(0.1));
+
+        expect($pool->stats['active_connections'])->toBe(3);
+
+        $pool->close();
+    });
+
+    it('does not spawn replacement connections during graceful shutdown', function (): void {
+        $pool = makePool(maxSize: 2, minSize: 2);
+
+        await(delay(0.1));
+
+        $conn = await($pool->get());
+
+        $shutdown = $pool->closeAsync();
+
+        $pool->release($conn);
+
+        await($shutdown);
+
+        expect($pool->stats['active_connections'])->toBe(0);
+    });
+});
+
+describe('Stats Flags', function (): void {
+
+    it('reports on_connect_hook as true when a hook is registered', function (): void {
+        $pool = makePool(maxSize: 1, onConnect: static function (): void {
+        });
+
+        expect($pool->stats['on_connect_hook'])->toBeTrue();
+
+        $pool->close();
+    });
+
+    it('reports on_connect_hook as false when no hook is registered', function (): void {
+        $pool = makePool(maxSize: 1);
+
+        expect($pool->stats['on_connect_hook'])->toBeFalse();
+
+        $pool->close();
+    });
+
+    it('reports reset_connection_enabled correctly', function (): void {
+        $poolWithReset = makePool(maxSize: 1, resetConnection: true);
+        $poolWithout = makePool(maxSize: 1, resetConnection: false);
+
+        expect($poolWithReset->stats['reset_connection_enabled'])->toBeTrue()
+            ->and($poolWithout->stats['reset_connection_enabled'])->toBeFalse()
+        ;
+
+        $poolWithReset->close();
+        $poolWithout->close();
+    });
+
+    it('reports draining_connections while a reset is in progress', function (): void {
+        $pool = makePool(maxSize: 1, resetConnection: true);
+
+        $conn = await($pool->get());
+
+        $pool->release($conn);
+
+        expect($pool->stats['draining_connections'])->toBeGreaterThanOrEqual(1);
+
+        await(delay(0.1));
+
+        expect($pool->stats['draining_connections'])->toBe(0);
+
+        $pool->close();
+    });
+});
+
+describe('Connection Reset Edge Cases', function (): void {
+
+    it('rolls back an open transaction before issuing DISCARD ALL on reset', function (): void {
+        $pool = makePool(maxSize: 1, resetConnection: true);
+
+        $conn = await($pool->get());
+
+        await($conn->query('BEGIN'));
+        await($conn->query("SET LOCAL application_name = 'in_txn'"));
+
+        $pool->release($conn);
+
+        await(delay(0.1));
+
+        $conn2 = await($pool->get());
+        $result = await($conn2->query('SHOW application_name'));
+        $appName = $result->fetchOne()['application_name'];
+
+        expect($appName)->not->toBe('in_txn');
+
+        $pool->release($conn2);
+        $pool->close();
+    });
+
+    it('drops the connection and satisfies the next waiter when DISCARD ALL fails', function (): void {
+        $pool = makePool(maxSize: 1, resetConnection: true);
+
+        $conn = await($pool->get());
+
+        $conn->close();
+        $pool->release($conn);
+        $conn2 = await($pool->get());
+
+        expect($conn2->isReady())->toBeTrue();
+
+        $pool->release($conn2);
+        $pool->close();
+    });
+});
+
+describe('onConnect Hook Edge Cases', function (): void {
+
+    it('can execute queries inside the onConnect hook via ConnectionSetupInterface', function (): void {
+        $pool = makePool(
+            maxSize: 1,
+            onConnect: function (Hibla\Postgres\Interfaces\ConnectionSetup $setup): Hibla\Promise\Interfaces\PromiseInterface {
+                return async(function () use ($setup): void {
+                    await($setup->query("SET application_name = 'hooked'"));
+                });
+            }
+        );
+
+        $conn = await($pool->get());
+        $result = await($conn->query('SHOW application_name'));
+
+        expect($result->fetchOne()['application_name'])->toBe('hooked');
+
+        $pool->release($conn);
+        $pool->close();
+    });
+
+    it('does not rerun the onConnect hook on release when resetConnection is disabled', function (): void {
+        $callCount = 0;
+
+        $pool = makePool(
+            maxSize: 1,
+            resetConnection: false,
+            onConnect: function () use (&$callCount): void {
+                $callCount++;
+            }
+        );
+
+        $conn = await($pool->get());
+        $pool->release($conn);
+
+        await(delay(0.05));
+
+        expect($callCount)->toBe(1);
+
+        $pool->close();
+    });
+
+    it('drops the connection when the onConnect hook rejects during pool warm-up', function (): void {
+        $pool = makePool(
+            maxSize: 2,
+            minSize: 2,
+            onConnect: function (): void {
+                throw new RuntimeException('warm-up hook failure');
+            }
+        );
+
+        await(delay(0.1));
+
+        expect($pool->stats['active_connections'])->toBe(0);
+
+        $pool->close();
+    });
+});
+
+describe('Graceful Shutdown Edge Cases', function (): void {
+
+    it('rejects all pending waiters immediately when closeAsync() is called', function (): void {
+        $pool = makePool(maxSize: 1);
+
+        $conn = await($pool->get());
+        $waiter = $pool->get();
+
+        $exception = null;
+        $waiter->then(null, function (Throwable $e) use (&$exception): void {
+            $exception = $e;
+        });
+
+        $shutdown = $pool->closeAsync();
+
+        await(delay(0));
+
+        expect($exception)->toBeInstanceOf(PoolException::class);
+
+        $pool->release($conn);
+        await($shutdown);
+    });
+
+    it('drops idle connections immediately when closeAsync() is called', function (): void {
+        $pool = makePool(maxSize: 2);
+
+        $conn1 = await($pool->get());
+        $conn2 = await($pool->get());
+        $pool->release($conn1);
+        $pool->release($conn2);
+
+        $shutdown = $pool->closeAsync();
+
+        expect($pool->stats['pooled_connections'])->toBe(0);
+
+        await($shutdown);
+    });
+
+    it('health check during graceful shutdown destroys connections instead of re-pooling them', function (): void {
+        $pool = makePool(maxSize: 2);
+
+        $conn1 = await($pool->get());
+        $conn2 = await($pool->get());
+        $pool->release($conn1);
+        $pool->release($conn2);
+
+        $pool->closeAsync();
+        $stats = await($pool->healthCheck());
+
+        expect($stats['total_checked'])->toBe(0);
+    });
+});
+
+describe('Invalid Constructor Arguments', function (): void {
+
+    it('throws when minSize exceeds maxSize by exactly one', function (): void {
+        expect(fn () => new PoolManager(pgPoolConfig(), maxSize: 3, minSize: 4))
+            ->toThrow(InvalidArgumentException::class)
+        ;
+    });
+
+    it('throws when acquireTimeout is negative', function (): void {
+        expect(fn () => new PoolManager(pgPoolConfig(), maxSize: 5, acquireTimeout: -0.001))
+            ->toThrow(InvalidArgumentException::class)
+        ;
+    });
+
+    it('accepts acquireTimeout of exactly 0.0 (unlimited wait)', function (): void {
+        $pool = null;
+        $exception = null;
+
+        try {
+            $pool = new PoolManager(pgPoolConfig(), maxSize: 1, acquireTimeout: 0.0);
+        } catch (Throwable $e) {
+            $exception = $e;
+        }
+
+        expect($exception)->toBeNull();
+
+        $pool?->close();
+    });
+
+    it('accepts minSize of exactly 0', function (): void {
+        $pool = null;
+        $exception = null;
+
+        try {
+            $pool = new PoolManager(pgPoolConfig(), maxSize: 3, minSize: 0);
+        } catch (Throwable $e) {
+            $exception = $e;
+        }
+
+        expect($exception)->toBeNull();
+
+        $pool?->close();
     });
 });
