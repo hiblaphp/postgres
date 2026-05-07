@@ -114,6 +114,10 @@ class Result implements PostgresResult
      */
     public function fetchColumn(string|int $column = 0): array
     {
+        if (\is_int($column)) {
+            return array_map(fn (array $row) => array_values($row)[$column] ?? null, $this->rows);
+        }
+
         return array_map(fn (array $row) => $row[$column] ?? null, $this->rows);
     }
 

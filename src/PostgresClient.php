@@ -289,7 +289,9 @@ final class PostgresClient implements SqlClientInterface
                     $row = $result->fetchOne();
 
                     if ($row !== null && \count($row) > 0) {
-                        return (int) reset($row);
+                        $val = reset($row);
+
+                        return \is_scalar($val) ? (int) $val : 0;
                     }
 
                     return $result->lastInsertId;
@@ -330,6 +332,12 @@ final class PostgresClient implements SqlClientInterface
                         $value = reset($row);
 
                         return $value !== false ? $value : null;
+                    }
+
+                    if (\is_int($column)) {
+                        $values = array_values($row);
+
+                        return $values[$column] ?? null;
                     }
 
                     return $row[$column] ?? null;

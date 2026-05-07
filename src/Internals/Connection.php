@@ -461,7 +461,11 @@ class Connection implements ConnectionBridge
 
         $cmd = $this->ctx->currentCommand;
         $this->ctx->currentCommand = null;
-        $this->ctx->state = ConnectionState::READY;
+
+        if ($this->ctx->state !== ConnectionState::CLOSED) {
+            $this->ctx->state = ConnectionState::READY;
+        }
+
         $this->ctx->accumulatedResults = [];
         $this->ctx->isStreamPaused = false;
 
