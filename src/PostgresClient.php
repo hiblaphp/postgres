@@ -12,6 +12,7 @@ use Hibla\Postgres\Interfaces\PostgresRowStream;
 use Hibla\Postgres\Internals\Connection;
 use Hibla\Postgres\Internals\ManagedPreparedStatement;
 use Hibla\Postgres\Internals\PreparedStatement;
+use Hibla\Postgres\Internals\Transaction;
 use Hibla\Postgres\Manager\PoolManager;
 use Hibla\Postgres\Traits\CancellationHelperTrait;
 use Hibla\Postgres\ValueObjects\PgSqlConfig;
@@ -20,7 +21,11 @@ use Hibla\Promise\Promise;
 use Hibla\Sql\IsolationLevelInterface;
 use Hibla\Sql\Result as ResultInterface;
 use Hibla\Sql\SqlClientInterface;
+use Hibla\Sql\Transaction as TransactionInterface;
 use Hibla\Sql\TransactionOptions;
+
+use function Hibla\async;
+use function Hibla\await;
 
 /**
  * Instance-based Asynchronous PostgreSQL Client with Connection Pooling.
@@ -426,18 +431,94 @@ final class PostgresClient implements SqlClientInterface
 
     /**
      * {@inheritdoc}
+     *
+     * @param IsolationLevelInterface|null $isolationLevel Optional isolation level.
+     *
+     * @return PromiseInterface<TransactionInterface>
      */
     public function beginTransaction(?IsolationLevelInterface $isolationLevel = null): PromiseInterface
     {
-        return Promise::rejected(new \RuntimeException('Transactions are not yet implemented in PostgresClient.'));
+        $pool = $this->getPool();
+        $connection = null;
+
+        return $this->withCancellation(
+            $this->borrowConnection()
+                ->then(function (Connection $conn) use ($isolationLevel, $pool, &$connection) {
+                    $connection = $conn;
+
+                    $cache = $this->getCacheForConnection($conn);
+
+                    $promise = $isolationLevel !== null
+                        ? $conn->query("SET TRANSACTION ISOLATION LEVEL {$isolationLevel->toSql()}")
+                        ->then(fn () => $conn->query('BEGIN'))
+                        : $conn->query('BEGIN');
+
+                    return $promise->then(function () use ($conn, $pool, $cache) {
+                        return new Transaction($conn, $pool, $cache);
+                    });
+                })
+                ->catch(function (\Throwable $e) use ($pool, &$connection) {
+                    if ($connection !== null) {
+                        $pool->release($connection);
+                    }
+
+                    throw $e;
+                })
+        );
     }
 
     /**
      * {@inheritdoc}
+     *
+     * @template TResult
+     *
+     * @param callable(TransactionInterface): TResult $callback
+     * @param TransactionOptions|null $options Transaction options.
+     *
+     * @return PromiseInterface<TResult>
      */
     public function transaction(callable $callback, ?TransactionOptions $options = null): PromiseInterface
     {
-        return Promise::rejected(new \RuntimeException('Transactions are not yet implemented in PostgresClient.'));
+        $options ??= TransactionOptions::default();
+
+        return async(function () use ($callback, $options) {
+            $lastError = null;
+
+            for ($attempt = 1; $attempt <= $options->attempts; $attempt++) {
+                $tx = null;
+
+                try {
+                    /** @var TransactionInterface $tx */
+                    $tx = await($this->beginTransaction($options->isolationLevel));
+
+                    $result = await(async(fn () => $callback($tx)));
+
+                    await($tx->commit());
+
+                    return $result;
+                } catch (\Throwable $e) {
+                    $lastError = $e;
+
+                    if ($tx !== null && $tx->isActive()) {
+                        try {
+                            await($tx->rollback());
+                        } catch (\Throwable) {
+                            // Ignore rollback failures — the original error is more useful.
+                        }
+                    }
+
+                    if ($attempt === $options->attempts) {
+                        break;
+                    }
+
+                    if (! $options->shouldRetry($e)) {
+                        throw $e;
+                    }
+                }
+            }
+
+            throw $lastError ?? new \RuntimeException('Transaction failed with no recorded error.');
+        });
     }
 
     /**
