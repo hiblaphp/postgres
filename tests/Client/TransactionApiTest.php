@@ -87,8 +87,9 @@ describe('Manual Transactions (beginTransaction)', function (): void {
         $tx = await($client->beginTransaction());
         await($tx->commit());
 
-        expect(fn() => await($tx->query('SELECT 1')))
-            ->toThrow(TransactionException::class, 'transaction is no longer active');
+        expect(fn () => await($tx->query('SELECT 1')))
+            ->toThrow(TransactionException::class, 'transaction is no longer active')
+        ;
 
         $client->close();
     });
@@ -105,6 +106,7 @@ describe('Auto-managed Transactions (transaction)', function (): void {
 
         $returnValue = await($client->transaction(function ($tx) {
             await($tx->query("INSERT INTO txn_auto_commit (val) VALUES ('hello')"));
+
             return 'success_payload';
         }));
 
@@ -127,6 +129,7 @@ describe('Auto-managed Transactions (transaction)', function (): void {
         try {
             await($client->transaction(function ($tx) {
                 await($tx->query("INSERT INTO txn_auto_rollback (val) VALUES ('x')"));
+
                 throw new RuntimeException('Intentional failure');
             }));
         } catch (RuntimeException $e) {
@@ -154,6 +157,7 @@ describe('Auto-managed Transactions (transaction)', function (): void {
             if ($attempts < 3) {
                 throw new RuntimeException('Retryable network blip');
             }
+
             return 'done';
         }, $options));
 
@@ -171,6 +175,7 @@ describe('Auto-managed Transactions (transaction)', function (): void {
         try {
             await($client->transaction(function ($tx) use (&$attempts) {
                 $attempts++;
+
                 throw new QueryException('Bad SQL');
             }, $options));
         } catch (QueryException) {
@@ -273,8 +278,9 @@ describe('Transaction::execute()', function (): void {
         $tx = await($client->beginTransaction());
         await($tx->commit());
 
-        expect(fn() => await($tx->execute('SELECT 1')))
-            ->toThrow(TransactionException::class, 'transaction is no longer active');
+        expect(fn () => await($tx->execute('SELECT 1')))
+            ->toThrow(TransactionException::class, 'transaction is no longer active')
+        ;
 
         $client->close();
     });
@@ -452,8 +458,9 @@ describe('Transaction::fetchOne()', function (): void {
         $tx = await($client->beginTransaction());
         await($tx->commit());
 
-        expect(fn() => await($tx->fetchOne('SELECT 1')))
-            ->toThrow(TransactionException::class, 'transaction is no longer active');
+        expect(fn () => await($tx->fetchOne('SELECT 1')))
+            ->toThrow(TransactionException::class, 'transaction is no longer active')
+        ;
 
         $client->close();
     });
@@ -559,8 +566,9 @@ describe('Transaction::fetchValue()', function (): void {
         $tx = await($client->beginTransaction());
         await($tx->commit());
 
-        expect(fn() => await($tx->fetchValue('SELECT 1')))
-            ->toThrow(TransactionException::class, 'transaction is no longer active');
+        expect(fn () => await($tx->fetchValue('SELECT 1')))
+            ->toThrow(TransactionException::class, 'transaction is no longer active')
+        ;
 
         $client->close();
     });
@@ -706,8 +714,9 @@ describe('Transaction::stream()', function (): void {
         $tx = await($client->beginTransaction());
         await($tx->commit());
 
-        expect(fn() => await($tx->stream('SELECT 1')))
-            ->toThrow(TransactionException::class, 'transaction is no longer active');
+        expect(fn () => await($tx->stream('SELECT 1')))
+            ->toThrow(TransactionException::class, 'transaction is no longer active')
+        ;
 
         $client->close();
     });
@@ -718,6 +727,7 @@ describe('Transaction::stream()', function (): void {
         $tx = await($client->beginTransaction());
 
         $error = null;
+
         try {
             await($tx->stream('SELECT * FROM definitely_does_not_exist_stream'));
         } catch (QueryException $e) {
@@ -726,8 +736,9 @@ describe('Transaction::stream()', function (): void {
 
         expect($error)->not->toBeNull();
 
-        expect(fn() => await($tx->query('SELECT 1')))
-            ->toThrow(TransactionException::class, 'Transaction aborted due to a previous query error');
+        expect(fn () => await($tx->query('SELECT 1')))
+            ->toThrow(TransactionException::class, 'Transaction aborted due to a previous query error')
+        ;
 
         await($tx->rollback());
         $client->close();
@@ -820,7 +831,7 @@ describe('Transaction::prepare() / TransactionPreparedStatement', function (): v
         await($stmt->close());
 
         $secondClose = $stmt->close();
-        expect($secondClose)->toBeInstanceOf(\Hibla\Promise\Interfaces\PromiseInterface::class);
+        expect($secondClose)->toBeInstanceOf(Hibla\Promise\Interfaces\PromiseInterface::class);
         await($secondClose);
 
         await($tx->commit());
@@ -833,8 +844,9 @@ describe('Transaction::prepare() / TransactionPreparedStatement', function (): v
         $tx = await($client->beginTransaction());
         await($tx->commit());
 
-        expect(fn() => await($tx->prepare('SELECT 1')))
-            ->toThrow(TransactionException::class, 'transaction is no longer active');
+        expect(fn () => await($tx->prepare('SELECT 1')))
+            ->toThrow(TransactionException::class, 'transaction is no longer active')
+        ;
 
         $client->close();
     });
@@ -894,6 +906,7 @@ describe('Postgres Error States (Tainted Transactions)', function (): void {
         $tx = await($client->beginTransaction());
 
         $error = null;
+
         try {
             await($tx->query('SELECT * FROM definitely_does_not_exist'));
         } catch (QueryException $e) {
@@ -902,8 +915,9 @@ describe('Postgres Error States (Tainted Transactions)', function (): void {
 
         expect($error)->not->toBeNull();
 
-        expect(fn() => await($tx->query('SELECT 1')))
-            ->toThrow(TransactionException::class, 'Transaction aborted due to a previous query error');
+        expect(fn () => await($tx->query('SELECT 1')))
+            ->toThrow(TransactionException::class, 'Transaction aborted due to a previous query error')
+        ;
 
         await($tx->rollback());
 
@@ -920,8 +934,9 @@ describe('Postgres Error States (Tainted Transactions)', function (): void {
         } catch (Throwable) {
         }
 
-        expect(fn() => await($tx->commit()))
-            ->toThrow(TransactionException::class, 'Transaction aborted due to a previous query error');
+        expect(fn () => await($tx->commit()))
+            ->toThrow(TransactionException::class, 'Transaction aborted due to a previous query error')
+        ;
 
         await($tx->rollback());
         $client->close();
@@ -940,8 +955,9 @@ describe('Postgres Error States (Tainted Transactions)', function (): void {
         } catch (Throwable) {
         }
 
-        expect(fn() => await($tx->query('SELECT 2')))
-            ->toThrow(TransactionException::class);
+        expect(fn () => await($tx->query('SELECT 2')))
+            ->toThrow(TransactionException::class)
+        ;
 
         await($tx->rollbackTo('safe_place'));
 
