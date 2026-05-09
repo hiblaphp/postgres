@@ -68,6 +68,15 @@ class RowStream implements PostgresRowStream, StreamContext
     private ?\Closure $onError = null;
 
     /**
+     * User-level cancel callback registered by Transaction/TransactionPreparedStatement
+     * so they can taint themselves when the stream is cancelled mid-iteration.
+     * Fired unconditionally inside cancel(), regardless of commandPromise state.
+     *
+     * @var \Closure(): void|null
+     */
+    private ?\Closure $onCancelCallback = null;
+
+    /**
      * @inheritDoc
      */
     public int $columnCount {
@@ -98,6 +107,22 @@ class RowStream implements PostgresRowStream, StreamContext
     public function setResumeCallback(\Closure $callback): void
     {
         $this->resumeCallback = $callback;
+    }
+
+    /**
+     * Registers a callback that fires whenever cancel() is called on this stream.
+     *
+     * Unlike hooking into the command promise's onCancel(), this fires even when
+     * the command promise is already settled (which happens when all rows arrive
+     * in a single chunk before iteration begins, e.g. executeStream() with a small
+     * result set). In that case RowStream::cancel() skips commandPromise->cancel()
+     * entirely, so any hook on commandPromise would never fire.
+     *
+     * @internal Used by Transaction and TransactionPreparedStatement.
+     */
+    public function onCancel(\Closure $callback): void
+    {
+        $this->onCancelCallback = $callback;
     }
 
     /**
@@ -201,8 +226,16 @@ class RowStream implements PostgresRowStream, StreamContext
         $this->error = new CancelledException('Stream was cancelled');
         $this->completed = true;
 
-        // Clear outer promise callbacks — cancellation is signalled via the
-        // outer promise's onCancel handler, not through these callbacks.
+        // Fire the user-level cancel callback first and unconditionally.
+        // This must happen before the commandPromise guard below, because
+        // commandPromise may already be settled (all rows buffered before
+        // iteration started), in which case commandPromise->cancel() is
+        // skipped and any hook registered on it would silently never fire.
+        if ($this->onCancelCallback !== null) {
+            ($this->onCancelCallback)();
+            $this->onCancelCallback = null;
+        }
+
         $this->onReady = null;
         $this->onError = null;
 

@@ -29,9 +29,20 @@ class TransactionPreparedStatement implements PreparedStatementInterface
 
     private bool $isClosed = false;
 
+    /**
+     * @param PreparedStatementInterface $statement The underlying prepared statement.
+     * @param Connection $connection The connection that owns this statement.
+     * @param \Closure(): void|null $onStreamError Optional callback invoked when a stream returned by executeStream() is
+     *                                             cancelled or errors out mid-iteration. Injected by Transaction::prepare()
+     *                                             so the owning transaction can set its $failed flag for lifecycle events
+     *                                             that happen entirely inside a foreach loop — after the outer borrow promise
+     *                                             has already resolved — and are therefore invisible to the promise chain
+     *                                             that Transaction::trackErrorState() monitors.
+     */
     public function __construct(
         private readonly PreparedStatementInterface $statement,
-        private readonly Connection $connection
+        private readonly Connection $connection,
+        private readonly ?\Closure $onStreamError = null,
     ) {
     }
 
@@ -51,12 +62,55 @@ class TransactionPreparedStatement implements PreparedStatementInterface
     /**
      * {@inheritdoc}
      *
+     * When an $onStreamError callback was provided by the owning Transaction,
+     * this method hooks into the resolved stream's command promise so that
+     * $stream->cancel() inside a foreach loop — or a server-side error mid-stream
+     * — taints the transaction by firing the callback.
+     *
+     * Both onCancel and .catch() are registered for the same reason as
+     * Transaction::trackErrorState(): promise cancellation short-circuits .catch()
+     * chains, so cancellation must be handled via a dedicated onCancel hook.
+     *
+     * The .catch() handler intentionally does not re-throw; it only needs the
+     * side-effect of invoking $onStreamError. Suppressing the error here does not
+     * hide it from the iterator — RowStream stores the error internally and throws
+     * it from getIterator() on the next iteration.
+     *
      * @return PromiseInterface<PostgresRowStream>
      */
     public function executeStream(array $params = []): PromiseInterface
     {
         /** @var PromiseInterface<PostgresRowStream> $promise */
         $promise = $this->statement->executeStream($params);
+
+        if ($this->onStreamError !== null) {
+            $onStreamError = $this->onStreamError;
+
+            $promise = $promise->then(
+                function (PostgresRowStream $stream) use ($onStreamError): PostgresRowStream {
+                    if ($stream instanceof RowStream) {
+                        // Primary: fires whenever $stream->cancel() is called, regardless
+                        // of commandPromise state. Necessary because executeStream() with
+                        // small result sets resolves the command promise before iteration
+                        // begins, making commandPromise-level hooks unreachable.
+                        $stream->onCancel($onStreamError);
+
+                        // Secondary: covers async server-side errors mid-stream.
+                        $cmd = $stream->waitForCommand();
+
+                        if (! $cmd->isSettled()) {
+                            $cmd->onCancel($onStreamError);
+
+                            $cmd->catch(static function () use ($onStreamError): void {
+                                $onStreamError();
+                            });
+                        }
+                    }
+
+                    return $stream;
+                }
+            );
+        }
 
         return $this->withCancellation($promise);
     }

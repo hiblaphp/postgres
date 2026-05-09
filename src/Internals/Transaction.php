@@ -107,7 +107,25 @@ class Transaction implements TransactionInterface
         if (\count($params) === 0) {
             $promise = $this->connection->streamQuery($sql, $bufferSize);
 
-            return $this->withCancellation($this->trackErrorState($promise));
+            // Track taint state from both the outer borrow promise (pre-first-row errors
+            // and outer cancellations) and the inner command promise (mid-iteration errors
+            // and $stream->cancel() calls inside a foreach loop).
+            //
+            // Without the command-promise hook in bindStreamErrorState(), cancelling the
+            // stream during iteration would send pg_cancel_backend and abort the server-side
+            // transaction, but $this->failed would stay false — allowing a subsequent
+            // commit() to silently send COMMIT to an already-aborted transaction.
+            $tracked = $this->trackErrorState($promise)->then(
+                function (PostgresRowStream $stream): PostgresRowStream {
+                    if ($stream instanceof RowStream) {
+                        $this->bindStreamErrorState($stream);
+                    }
+
+                    return $stream;
+                }
+            );
+
+            return $this->withCancellation($tracked);
         }
 
         $innerPromise = null;
@@ -120,6 +138,11 @@ class Transaction implements TransactionInterface
                 $innerPromise = $stmt->executeStream($params, $bufferSize)
                     ->then(function (PostgresRowStream $stream) use ($stmt, $isCached): PostgresRowStream {
                         if ($stream instanceof RowStream) {
+                            // Hook into mid-iteration errors/cancellations before registering
+                            // the statement-close callback so both share the same underlying
+                            // command promise without ordering dependencies.
+                            $this->bindStreamErrorState($stream);
+
                             if (! $isCached) {
                                 $stream->waitForCommand()->finally($stmt->close(...));
                             }
@@ -140,6 +163,11 @@ class Transaction implements TransactionInterface
 
     /**
      * {@inheritdoc}
+     *
+     * The $onStreamError closure passed to TransactionPreparedStatement lets it
+     * taint this transaction when a stream returned by the statement is cancelled
+     * or errors out mid-iteration — a lifecycle event that occurs entirely outside
+     * the promise chain this Transaction can observe directly.
      */
     public function prepare(string $sql): PromiseInterface
     {
@@ -147,9 +175,13 @@ class Transaction implements TransactionInterface
 
         $innerPromise = $this->connection->prepare($sql);
 
+        $onStreamError = function (): void {
+            $this->failed = true;
+        };
+
         $promise = $innerPromise->then(
-            function (PreparedStatementInterface $stmt) {
-                return new TransactionPreparedStatement($stmt, $this->connection);
+            function (PreparedStatementInterface $stmt) use ($onStreamError) {
+                return new TransactionPreparedStatement($stmt, $this->connection, $onStreamError);
             }
         );
 
@@ -258,6 +290,14 @@ class Transaction implements TransactionInterface
      * in an undefined state on the server. This operation must be allowed
      * to complete or fail on its own terms.
      *
+     * NOTE: $this->active is now set to false inside the query callbacks rather
+     * than before the query is dispatched. This is critical for recoverability:
+     * if the server rejects COMMIT (e.g. the connection is in INERROR state due
+     * to a prior cancellation), $this->active must remain true so the caller can
+     * still invoke rollback() to cleanly close out the transaction. Setting it
+     * prematurely before the query meant a failing commit would permanently prevent
+     * rollback from running.
+     *
      * @return PromiseInterface<void>
      */
     public function commit(): PromiseInterface
@@ -273,15 +313,17 @@ class Transaction implements TransactionInterface
             );
         }
 
-        $this->active = false;
-
-        return $this->connection->query('COMMIT')
+        $promise = $this->connection->query('COMMIT')
             ->then(
                 function (): void {
+                    $this->active = false;
                     $this->executeCallbacks($this->onCommitCallbacks);
                     $this->onRollbackCallbacks = [];
                 },
                 function (\Throwable $e): never {
+                    $this->active = false;
+                    $this->failed = true;
+
                     throw new TransactionException(
                         'Failed to commit transaction: ' . $e->getMessage(),
                         (int) $e->getCode(),
@@ -291,6 +333,8 @@ class Transaction implements TransactionInterface
             )
             ->finally($this->releaseConnection(...))
         ;
+
+        return $this->shield($promise);
     }
 
     /**
@@ -301,15 +345,73 @@ class Transaction implements TransactionInterface
      * in an undefined state on the server. This operation must be allowed
      * to complete or fail on its own terms.
      *
+     * NOTE: rollback() is idempotent — calling it on an already-rolled-back or
+     * already-committed transaction silently returns a resolved promise rather than
+     * throwing. This allows callers to safely place rollback() in finally blocks
+     * without needing to guard with isActive() first.
+     *
+     * NOTE: When the underlying connection has been closed (e.g. via the opt-out
+     * cancellation path where enableServerSideCancellation is false), rollback()
+     * cannot send ROLLBACK to the server. It still releases the (now-closed)
+     * connection back to the pool so the pool's activeConnections counter is
+     * decremented and any queued waiters can be served via a fresh connection.
+     * Without this release the pool would permanently believe it is at capacity.
+     *
+     * NOTE: When a query was recently cancelled via pg_cancel_backend
+     * (wasQueryCancelled=true), releaseConnection() is called synchronously BEFORE
+     * awaiting the ROLLBACK promise rather than via the traditional finally() chain.
+     *
+     * Rationale: the pool's drainAndRelease() removes the connection from
+     * activeConnectionsMap synchronously when called, dropping active_connections to
+     * zero immediately. This matters inside async() coroutines where the outer promise
+     * may be cancelled: if await() in a cancelled fiber re-throws CancelledException
+     * immediately (aborting cleanup), callers checking active_connections right after
+     * the outer promise rejects would see a stale count. By decrementing synchronously
+     * inside rollback() itself, the count is correct the instant rollback() returns —
+     * regardless of whether its returned promise is awaited or discarded.
+     *
+     * Safety: drainAndRelease() places the connection in drainingConnections (not the
+     * idle pool), so it cannot be borrowed by another caller mid-ROLLBACK. The ROLLBACK
+     * command is queued on the connection before releaseConnection() is called, ensuring
+     * it executes first in command-queue order, followed by drainAndRelease()'s ping.
+     *
+     * For non-cancelled connections (wasQueryCancelled=false), we must wait for ROLLBACK
+     * to complete before releasing to avoid returning a dirty connection to the pool via
+     * releaseClean(). The traditional finally() path handles this case.
+     *
      * @return PromiseInterface<void>
      */
     public function rollback(): PromiseInterface
     {
-        $this->ensureActive();
+        // Idempotency guard: already committed, rolled back, or otherwise closed.
+        // Return a resolved promise rather than throwing so callers can safely
+        // invoke rollback() in finally blocks or call it a second time defensively.
+        if (! $this->active) {
+            return Promise::resolved();
+        }
+
+        // Opt-out cancellation path: when enableServerSideCancellation is false and
+        // a query promise is cancelled, Connection::handleCommandCancellation() calls
+        // close() on the connection. The wire cannot idle while a query is running,
+        // so closing is the only safe option. The connection is now dead, but it is
+        // still registered as active in the pool. We must call releaseConnection()
+        // here to decrement the pool counter and unblock any queued waiters.
+        if ($this->connection->isClosed()) {
+            $this->active = false;
+            $this->failed = false;
+            $this->releaseConnection();
+
+            return Promise::resolved();
+        }
+
+        // Interrupt any running query so the wire is free to receive the ROLLBACK immediately.
+        // This bridges the gap when the Fiber is killed but the underlying query promise is orphaned.
+        $this->connection->cancelCurrentCommand();
+
         $this->active = false;
         $this->failed = false;
 
-        return $this->connection->query('ROLLBACK')
+        $promise = $this->connection->query('ROLLBACK')
             ->then(
                 function (): void {
                     $this->executeCallbacks($this->onRollbackCallbacks);
@@ -323,8 +425,23 @@ class Transaction implements TransactionInterface
                     );
                 }
             )
-            ->finally($this->releaseConnection(...))
         ;
+
+        // pg_cancel_backend path: release synchronously so pool stats are correct
+        // immediately, before any await() on the returned promise.
+        // drainAndRelease() keeps the connection in drainingConnections, so ROLLBACK
+        // (already queued) runs safely before the subsequent drain ping.
+        if ($this->connection->wasQueryCancelled()) {
+            $this->releaseConnection();
+
+            return $promise;
+        }
+
+        // Normal path: release only after ROLLBACK completes to prevent a dirty
+        // connection from being parked in the idle pool via releaseClean().
+        $promise = $promise->finally($this->releaseConnection(...));
+
+        return $this->shield($promise);
     }
 
     /**
@@ -345,7 +462,10 @@ class Transaction implements TransactionInterface
             }
         );
 
-        return $this->trackErrorState($promise);
+        // withCancellation() was previously absent here. Without it, calling
+        // cancel() on the returned promise had no effect — the underlying query
+        // would run to completion and the transaction would not be tainted.
+        return $this->withCancellation($this->trackErrorState($promise));
     }
 
     /**
@@ -390,7 +510,7 @@ class Transaction implements TransactionInterface
             }
         );
 
-        return $this->trackErrorState($promise);
+        return $this->withCancellation($this->trackErrorState($promise));
     }
 
     public function isActive(): bool
@@ -404,6 +524,30 @@ class Transaction implements TransactionInterface
     }
 
     /**
+     * Force-cancels any running query on the connection.
+     * Call this before rollback() if the transaction fiber was killed.
+     */
+    public function forceCancelCurrentQuery(): void
+    {
+        if (! $this->connection->isClosed()) {
+            $this->connection->cancelCurrentCommand();
+        }
+    }
+
+    /**
+     * Wraps a promise so that any rejection or cancellation marks the transaction
+     * as failed, reflecting the fact that PostgreSQL has put the connection into
+     * INERROR state and requires an explicit ROLLBACK before any further work.
+     *
+     * Cancellation is handled separately via onCancel() because cancelled promises
+     * short-circuit the chain before .catch() handlers fire — they do not propagate
+     * through rejection handlers the same way that ordinary rejections do. Without
+     * the onCancel hook, cancelling a query promise would successfully send
+     * pg_cancel_backend and abort the server-side transaction, but $this->failed
+     * would remain false. A subsequent commit() would then return the early-reject
+     * path only by coincidence (or not at all), and the next query call would not
+     * throw TransactionException as expected.
+     *
      * @template T
      *
      * @param PromiseInterface<T> $promise
@@ -412,11 +556,59 @@ class Transaction implements TransactionInterface
      */
     private function trackErrorState(PromiseInterface $promise): PromiseInterface
     {
+        // onCancel fires synchronously when cancel() is called, before any chain
+        // unwinding, ensuring $this->failed is set even though CancelledException
+        // never reaches the .catch() handler below.
+        $promise->onCancel(function (): void {
+            $this->failed = true;
+        });
+
         return $promise->catch(function (\Throwable $e) {
             $this->failed = true;
 
             throw $e;
         });
+    }
+
+    /**
+     * Hooks into a RowStream to taint the transaction if the stream is cancelled
+     * or errors out during mid-iteration consumption.
+     *
+     * Two complementary hooks are registered:
+     *
+     *   1. $stream->onCancel() — fires unconditionally whenever $stream->cancel()
+     *      is called, even when the command promise is already settled (i.e. all rows
+     *      arrived in one chunk before iteration started). This is the primary guard.
+     *
+     *   2. commandPromise onCancel / catch — fires when the server-side command is
+     *      cancelled or errors out asynchronously (e.g. a deferred constraint violation
+     *      while rows are still being sent). Only registered when the command promise
+     *      is still pending to avoid redundant no-op registrations on settled promises.
+     *
+     * @param RowStream $stream The already-resolved stream whose lifecycle to observe.
+     */
+    private function bindStreamErrorState(RowStream $stream): void
+    {
+        // Primary: fires whenever $stream->cancel() is called, regardless of whether
+        // commandPromise is settled. Covers the executeStream() case where all rows
+        // arrive before iteration begins.
+        $stream->onCancel(function (): void {
+            $this->failed = true;
+        });
+
+        // Secondary: covers async server-side errors that arrive mid-stream.
+        // Skip if already settled — onCancel/catch on a resolved promise is a no-op.
+        $cmd = $stream->waitForCommand();
+
+        if (! $cmd->isSettled()) {
+            $cmd->onCancel(function (): void {
+                $this->failed = true;
+            });
+
+            $cmd->catch(function (): void {
+                $this->failed = true;
+            });
+        }
     }
 
     /**

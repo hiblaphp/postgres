@@ -545,6 +545,24 @@ class Connection implements ConnectionBridge
     }
 
     /**
+     * Cancels the currently executing command and clears the queue.
+     * Used to interrupt long-running queries during an emergency rollback.
+     */
+    public function cancelCurrentCommand(): void
+    {
+        if ($this->ctx->currentCommand !== null && ! $this->ctx->currentCommand->promise->isSettled()) {
+            $this->ctx->currentCommand->promise->cancel();
+        }
+
+        while (! $this->ctx->commandQueue->isEmpty()) {
+            $cmd = $this->ctx->commandQueue->dequeue();
+            if (! $cmd->promise->isSettled()) {
+                $cmd->promise->cancel();
+            }
+        }
+    }
+
+    /**
      * @param array<int, mixed> $params
      *
      * @return PromiseInterface<mixed>

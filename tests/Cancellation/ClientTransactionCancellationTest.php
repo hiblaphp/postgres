@@ -279,7 +279,8 @@ describe('Transaction Cancellation - Savepoints', function (): void {
         await($tx->savepoint('sp2'));
 
         $promise = $tx->releaseSavepoint('sp2');
-        Loop::addTimer(0.05, fn () => $promise->cancel());
+
+        $promise->cancel();
 
         expect(fn () => await($promise))->toThrow(CancelledException::class);
 
@@ -425,13 +426,14 @@ describe('Transaction Cancellation - Commit Lifecycle', function (): void {
         await($tx->query('INSERT INTO commit_cancel_test VALUES (1)'));
 
         $commit = $tx->commit();
-        Loop::addTimer(0.05, fn () => $commit->cancel());
+
+        $commit->cancel();
 
         expect(fn () => await($commit))->toThrow(CancelledException::class);
 
-        expect($tx->isActive())->toBeFalse();
-
         await(delay(0.3));
+
+        expect($tx->isActive())->toBeFalse();
         expect($client->stats['active_connections'])->toBe(0);
 
         $client->close();
