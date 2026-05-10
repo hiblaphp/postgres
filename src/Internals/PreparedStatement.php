@@ -26,11 +26,13 @@ class PreparedStatement implements PreparedStatementInterface
      * @param string $name The server-side statement name (e.g. "stmt_3").
      * @param list<string> $paramNames Ordered parameter names from the original SQL,
      *                                 empty when positional (?) placeholders were used.
+     * @param string $parsedSql The parsed SQL statement, with placeholders replaced by actual values.
      */
     public function __construct(
         private readonly Connection $connection,
         public readonly string $name,
         public readonly array $paramNames = [],
+        public readonly string $parsedSql = '',
     ) {
     }
 

@@ -164,7 +164,7 @@ class Connection implements ConnectionBridge
                 if ($this->ctx->state === ConnectionState::CONNECTING) {
                     $this->onConnectFailed(
                         "Connection timed out after {$this->config->connectTimeout} seconds. " .
-                            "The PostgreSQL server might be offline or unreachable."
+                            'The PostgreSQL server might be offline or unreachable.'
                     );
                 }
             });
@@ -239,7 +239,8 @@ class Connection implements ConnectionBridge
         [$parsedSql,, $paramNames] = ParamParser::parsePlaceholders($sql);
 
         $connection = $this;
-        $factory = static fn() => new PreparedStatement($connection, $name, $paramNames);
+
+        $factory = static fn () => new PreparedStatement($connection, $name, $paramNames, $parsedSql);
 
         /** @var PromiseInterface<PreparedStatement> $promise */
         $promise = $this->enqueueCommand(CommandRequest::TYPE_PREPARE, $parsedSql, [], $factory);
@@ -257,8 +258,10 @@ class Connection implements ConnectionBridge
         /** @var PromiseInterface<\Hibla\Postgres\Interfaces\PostgresResult> $promise */
         $promise = $this->enqueueCommand(
             CommandRequest::TYPE_EXECUTE,
-            $stmt->name,
+            $stmt->parsedSql, // <-- Send parsed SQL
             $this->resolveStatementParams($stmt, $params),
+            null,
+            $stmt->name
         );
 
         return $promise;
@@ -291,9 +294,10 @@ class Connection implements ConnectionBridge
 
         $commandPromise = $this->enqueueCommand(
             CommandRequest::TYPE_EXECUTE_STREAM,
-            $stmt->name,
+            $stmt->parsedSql,
             $this->resolveStatementParams($stmt, $params),
             $stream,
+            $stmt->name
         );
 
         $stream->bindCommandPromise($commandPromise);
@@ -340,7 +344,7 @@ class Connection implements ConnectionBridge
         ) {
             /** @var PromiseInterface<void> */
             return $this->enqueueCommand(CommandRequest::TYPE_QUERY, 'ROLLBACK')
-                ->then(fn() => $this->enqueueCommand(CommandRequest::TYPE_RESET, 'DISCARD ALL'))
+                ->then(fn () => $this->enqueueCommand(CommandRequest::TYPE_RESET, 'DISCARD ALL'))
             ;
         }
 
@@ -516,7 +520,8 @@ class Connection implements ConnectionBridge
             // the wrong type. Guard here so the cancelled state always wins.
             if (! $cmd->promise->isCancelled()) {
                 $cmd->promise->reject($error);
-                $cmd->promise->catch(static function (): void {});
+                $cmd->promise->catch(static function (): void {
+                });
             }
         } else {
             if (! $cmd->promise->isCancelled()) {
@@ -588,13 +593,14 @@ class Connection implements ConnectionBridge
         string $sql = '',
         array $params = [],
         mixed $context = null,
+        string $statementName = '',
     ): PromiseInterface {
         if ($this->ctx->state === ConnectionState::CLOSED) {
             return Promise::rejected(new ConnectionException('Connection is closed'));
         }
 
         $promise = new Promise();
-        $command = new CommandRequest($type, $promise, $sql, $params, $context);
+        $command = new CommandRequest($type, $promise, $sql, $params, $context, $statementName);
         $this->ctx->commandQueue->enqueue($command);
 
         $promise->onCancel(function () use ($command): void {
@@ -704,7 +710,7 @@ class Connection implements ConnectionBridge
                 Connection::create($this->config)
                     ->then(function (Connection $killConn) use ($pid): PromiseInterface {
                         return $killConn->query("SELECT pg_cancel_backend({$pid})")
-                            ->finally(fn() => $killConn->close())
+                            ->finally(fn () => $killConn->close())
                         ;
                     }),
                 $this->config->killTimeoutSeconds
@@ -765,7 +771,8 @@ class Connection implements ConnectionBridge
             $this->ctx->connectPromise->reject($exception);
             // Suppress unhandled rejection — the caller may have already dropped
             // the connect promise reference by the time teardown runs.
-            $this->ctx->connectPromise->catch(static function (): void {});
+            $this->ctx->connectPromise->catch(static function (): void {
+            });
             $this->ctx->connectPromise = null;
         }
 
@@ -773,13 +780,15 @@ class Connection implements ConnectionBridge
             $cmd = $this->ctx->currentCommand;
             $this->ctx->currentCommand = null;
             $cmd->promise->reject($exception);
-            $cmd->promise->catch(static function (): void {});
+            $cmd->promise->catch(static function (): void {
+            });
         }
 
         while (! $this->ctx->commandQueue->isEmpty()) {
             $cmd = $this->ctx->commandQueue->dequeue();
             $cmd->promise->reject($exception);
-            $cmd->promise->catch(static function (): void {});
+            $cmd->promise->catch(static function (): void {
+            });
         }
     }
 
@@ -836,7 +845,7 @@ class Connection implements ConnectionBridge
 
     private function processExecute(CommandRequest $cmd): void
     {
-        $sent = @pg_send_execute($this->assertConnection(), $cmd->sql, $this->normalizeParams($cmd->params));
+        $sent = @pg_send_execute($this->assertConnection(), $cmd->statementName, $this->normalizeParams($cmd->params));
         if ($sent === false) {
             throw new QueryException('Failed to send EXECUTE: ' . pg_last_error($this->assertConnection()));
         }
@@ -849,14 +858,20 @@ class Connection implements ConnectionBridge
         $stream = $cmd->context;
         $stream->setResumeCallback($this->streamHandler->resume(...));
 
-        $sent = @pg_send_execute($this->assertConnection(), $cmd->sql, $this->normalizeParams($cmd->params));
+        if (! function_exists('pg_set_chunked_rows_size')) {
+            // Fallback to CursorHandler. It automatically detects parameters and uses pg_send_query_params
+            // to securely execute `DECLARE cursor FOR <sql>` with the provided variables.
+            $this->cursorHandler->init($cmd->sql, $this->normalizeParams($cmd->params));
+
+            return;
+        }
+
+        $sent = @pg_send_execute($this->assertConnection(), $cmd->statementName, $this->normalizeParams($cmd->params));
         if ($sent === false) {
             throw new QueryException('Failed to send EXECUTE (stream): ' . pg_last_error($this->assertConnection()));
         }
 
-        if (function_exists('pg_set_chunked_rows_size')) {
-            @pg_set_chunked_rows_size($this->assertConnection(), $stream->bufferSize);
-        }
+        @pg_set_chunked_rows_size($this->assertConnection(), $stream->bufferSize);
 
         $this->addQueryReadWatcher();
     }
@@ -931,7 +946,7 @@ class Connection implements ConnectionBridge
     private function normalizeParams(array $params): array
     {
         return array_map(
-            static fn(mixed $p) => \is_bool($p) ? ($p ? '1' : '0') : $p,
+            static fn (mixed $p) => \is_bool($p) ? ($p ? '1' : '0') : $p,
             $params
         );
     }

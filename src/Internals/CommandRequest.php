@@ -27,6 +27,7 @@ final class CommandRequest
      * @param string $sql SQL string (query/prepare) or statement name (execute).
      * @param array<int, mixed> $params Bound parameters (execute / execute_stream only).
      * @param mixed $context RowStream for stream commands; factory closure for prepare.
+     * @param string $statementName Name of the statement to execute (execute only).
      */
     public function __construct(
         public readonly string $type,
@@ -34,6 +35,7 @@ final class CommandRequest
         public readonly string $sql = '',
         public readonly array $params = [],
         public readonly mixed $context = null,
+        public readonly string $statementName = '',
     ) {
     }
 }
