@@ -7,7 +7,6 @@ namespace Hibla\Postgres\Internals;
 use Hibla\Cache\ArrayCache;
 use Hibla\Postgres\Interfaces\PostgresResult;
 use Hibla\Postgres\Manager\PoolManager;
-use Hibla\Postgres\Traits\CancellationHelperTrait;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
 use Hibla\Sql\Exceptions\TransactionException;
@@ -23,8 +22,6 @@ use Hibla\Sql\Transaction as TransactionInterface;
  */
 class Transaction implements TransactionInterface
 {
-    use CancellationHelperTrait;
-
     /**
      * @var list<callable(): void>
      */
@@ -68,7 +65,7 @@ class Transaction implements TransactionInterface
         if (\count($params) === 0) {
             $promise = $this->connection->query($sql);
 
-            return $this->withCancellation($this->trackErrorState($promise));
+            return Promise::propagateCancellation($this->trackErrorState($promise));
         }
 
         $innerPromise = null;
@@ -90,9 +87,9 @@ class Transaction implements TransactionInterface
             })
         ;
 
-        $this->bindInnerCancellation($promise, $innerPromise);
+        Promise::forwardCancellation($promise, $innerPromise);
 
-        return $this->withCancellation($this->trackErrorState($promise));
+        return Promise::propagateCancellation($this->trackErrorState($promise));
     }
 
     /**
@@ -123,7 +120,7 @@ class Transaction implements TransactionInterface
                 }
             );
 
-            return $this->withCancellation($tracked);
+            return Promise::propagateCancellation($tracked);
         }
 
         $innerPromise = null;
@@ -154,9 +151,9 @@ class Transaction implements TransactionInterface
             })
         ;
 
-        $this->bindInnerCancellation($promise, $innerPromise);
+        Promise::forwardCancellation($promise, $innerPromise);
 
-        return $this->withCancellation($this->trackErrorState($promise));
+        return Promise::propagateCancellation($this->trackErrorState($promise));
     }
 
     /**
@@ -183,9 +180,9 @@ class Transaction implements TransactionInterface
             }
         );
 
-        $this->bindInnerCancellation($promise, $innerPromise);
+        Promise::forwardCancellation($promise, $innerPromise);
 
-        return $this->trackErrorState($promise);
+        return Promise::propagateCancellation($this->trackErrorState($promise));
     }
 
     /**
@@ -193,7 +190,7 @@ class Transaction implements TransactionInterface
      */
     public function execute(string $sql, array $params = []): PromiseInterface
     {
-        return $this->withCancellation(
+        return Promise::propagateCancellation(
             $this->query($sql, $params)
                 ->then(fn (ResultInterface $result) => $result->affectedRows)
         );
@@ -204,7 +201,7 @@ class Transaction implements TransactionInterface
      */
     public function executeGetId(string $sql, array $params = []): PromiseInterface
     {
-        return $this->withCancellation(
+        return Promise::propagateCancellation(
             $this->query($sql, $params)
                 ->then(function (ResultInterface $result) {
                     $row = $result->fetchOne();
@@ -225,7 +222,7 @@ class Transaction implements TransactionInterface
      */
     public function fetchOne(string $sql, array $params = []): PromiseInterface
     {
-        return $this->withCancellation(
+        return Promise::propagateCancellation(
             $this->query($sql, $params)
                 ->then(fn (ResultInterface $result) => $result->fetchOne())
         );
@@ -236,7 +233,7 @@ class Transaction implements TransactionInterface
      */
     public function fetchValue(string $sql, string|int|null $column = null, array $params = []): PromiseInterface
     {
-        return $this->withCancellation(
+        return Promise::propagateCancellation(
             $this->query($sql, $params)
                 ->then(function (ResultInterface $result) use ($column) {
                     $row = $result->fetchOne();
@@ -283,7 +280,7 @@ class Transaction implements TransactionInterface
     /**
      * {@inheritdoc}
      *
-     * NOTE: withCancellation() is intentionally NOT applied to commit().
+     * NOTE: Promise::propagateCancellation() is intentionally NOT applied to commit().
      * Dispatching pg_cancel_backend against a COMMIT would leave the transaction
      * in an undefined state on the server. This operation must be allowed
      * to complete or fail on its own terms.
@@ -332,13 +329,13 @@ class Transaction implements TransactionInterface
             ->finally($this->releaseConnection(...))
         ;
 
-        return $this->shield($promise);
+        return Promise::uninterruptible($promise);
     }
 
     /**
      * {@inheritdoc}
      *
-     * NOTE: withCancellation() is intentionally NOT applied to rollback().
+     * NOTE: Promise::propagateCancellation() is intentionally NOT applied to rollback().
      * Dispatching pg_cancel_backend against a ROLLBACK would leave the transaction
      * in an undefined state on the server. This operation must be allowed
      * to complete or fail on its own terms.
@@ -432,14 +429,14 @@ class Transaction implements TransactionInterface
         if ($this->connection->wasQueryCancelled()) {
             $this->releaseConnection();
 
-            return $promise;
+            return Promise::uninterruptible($promise);
         }
 
         // Normal path: release only after ROLLBACK completes to prevent a dirty
         // connection from being parked in the idle pool via releaseClean().
         $promise = $promise->finally($this->releaseConnection(...));
 
-        return $this->shield($promise);
+        return Promise::uninterruptible($promise);
     }
 
     /**
@@ -460,10 +457,7 @@ class Transaction implements TransactionInterface
             }
         );
 
-        // withCancellation() was previously absent here. Without it, calling
-        // cancel() on the returned promise had no effect — the underlying query
-        // would run to completion and the transaction would not be tainted.
-        return $this->withCancellation($this->trackErrorState($promise));
+        return Promise::propagateCancellation($this->trackErrorState($promise));
     }
 
     /**
@@ -477,7 +471,7 @@ class Transaction implements TransactionInterface
         // Rolling back to a savepoint potentially clears the failed state for operations after that savepoint
         $this->failed = false;
 
-        return $this->connection->query("ROLLBACK TO SAVEPOINT {$escaped}")->catch(
+        $promise = $this->connection->query("ROLLBACK TO SAVEPOINT {$escaped}")->catch(
             function (\Throwable $e) use ($identifier): never {
                 $this->failed = true; // If rollback fails, the whole transaction is dead
 
@@ -488,6 +482,8 @@ class Transaction implements TransactionInterface
                 );
             }
         );
+
+        return Promise::propagateCancellation($promise);
     }
 
     /**
@@ -508,7 +504,7 @@ class Transaction implements TransactionInterface
             }
         );
 
-        return $this->withCancellation($this->trackErrorState($promise));
+        return Promise::propagateCancellation($this->trackErrorState($promise));
     }
 
     public function isActive(): bool

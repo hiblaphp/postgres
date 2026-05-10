@@ -13,7 +13,6 @@ use Hibla\Postgres\Internals\ManagedPreparedStatement;
 use Hibla\Postgres\Internals\PreparedStatement;
 use Hibla\Postgres\Internals\Transaction;
 use Hibla\Postgres\Manager\PoolManager;
-use Hibla\Postgres\Traits\CancellationHelperTrait;
 use Hibla\Postgres\ValueObjects\PgSqlConfig;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
@@ -36,8 +35,6 @@ use function Hibla\await;
  */
 final class PostgresClient implements SqlClientInterface
 {
-    use CancellationHelperTrait;
-
     private ?PoolManager $pool = null;
 
     /**
@@ -208,9 +205,9 @@ final class PostgresClient implements SqlClientInterface
             })
         ;
 
-        $this->bindInnerCancellation($promise, $innerPromise);
+        Promise::forwardCancellation($promise, $innerPromise);
 
-        return $this->withCancellation($promise);
+        return Promise::propagateCancellation($promise);
     }
 
     /**
@@ -263,9 +260,9 @@ final class PostgresClient implements SqlClientInterface
             })
         ;
 
-        $this->bindInnerCancellation($promise, $innerPromise);
+        Promise::forwardCancellation($promise, $innerPromise);
 
-        return $this->withCancellation($promise);
+        return Promise::propagateCancellation($promise);
     }
 
     /**
@@ -275,7 +272,7 @@ final class PostgresClient implements SqlClientInterface
      */
     public function execute(string $sql, array $params = []): PromiseInterface
     {
-        return $this->withCancellation(
+        return Promise::propagateCancellation(
             $this->query($sql, $params)
                 ->then(fn (ResultInterface $result) => $result->affectedRows)
         );
@@ -288,7 +285,7 @@ final class PostgresClient implements SqlClientInterface
      */
     public function executeGetId(string $sql, array $params = []): PromiseInterface
     {
-        return $this->withCancellation(
+        return Promise::propagateCancellation(
             $this->query($sql, $params)
                 ->then(function (ResultInterface $result) {
                     $row = $result->fetchOne();
@@ -311,7 +308,7 @@ final class PostgresClient implements SqlClientInterface
      */
     public function fetchOne(string $sql, array $params = []): PromiseInterface
     {
-        return $this->withCancellation(
+        return Promise::propagateCancellation(
             $this->query($sql, $params)
                 ->then(fn (ResultInterface $result) => $result->fetchOne())
         );
@@ -324,7 +321,7 @@ final class PostgresClient implements SqlClientInterface
      */
     public function fetchValue(string $sql, string|int|null $column = null, array $params = []): PromiseInterface
     {
-        return $this->withCancellation(
+        return Promise::propagateCancellation(
             $this->query($sql, $params)
                 ->then(function (ResultInterface $result) use ($column) {
                     $row = $result->fetchOne();
@@ -424,9 +421,9 @@ final class PostgresClient implements SqlClientInterface
             ->finally($releaseOnce)
         ;
 
-        $this->bindInnerCancellation($promise, $innerPromise);
+        Promise::forwardCancellation($promise, $innerPromise);
 
-        return $this->withCancellation($promise);
+        return Promise::propagateCancellation($promise);
     }
 
     /**
@@ -441,7 +438,7 @@ final class PostgresClient implements SqlClientInterface
         $pool = $this->getPool();
         $connection = null;
 
-        return $this->withCancellation(
+        return Promise::propagateCancellation(
             $this->borrowConnection()
                 ->then(function (Connection $conn) use ($isolationLevel, $pool, &$connection) {
                     $connection = $conn;
@@ -544,7 +541,7 @@ final class PostgresClient implements SqlClientInterface
             }
         });
 
-        return $this->withCancellation($fiberPromise);
+        return Promise::propagateCancellation($fiberPromise);
     }
 
     /**

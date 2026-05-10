@@ -5,7 +5,6 @@ declare(strict_types=1);
 namespace Hibla\Postgres\Internals;
 
 use Hibla\Postgres\Interfaces\PostgresResult;
-use Hibla\Postgres\Traits\CancellationHelperTrait;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
 use Hibla\Sql\PreparedStatement as PreparedStatementInterface;
@@ -25,8 +24,6 @@ use Hibla\Sql\RowStream as SqlRowStream;
  */
 class TransactionPreparedStatement implements PreparedStatementInterface
 {
-    use CancellationHelperTrait;
-
     private bool $isClosed = false;
 
     /**
@@ -56,7 +53,7 @@ class TransactionPreparedStatement implements PreparedStatementInterface
         /** @var PromiseInterface<PostgresResult> $promise */
         $promise = $this->statement->execute($params);
 
-        return $this->withCancellation($promise);
+        return Promise::propagateCancellation($promise);
     }
 
     /**
@@ -112,7 +109,7 @@ class TransactionPreparedStatement implements PreparedStatementInterface
             );
         }
 
-        return $this->withCancellation($promise);
+        return Promise::propagateCancellation($promise);
     }
 
     /**

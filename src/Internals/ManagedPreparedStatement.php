@@ -6,8 +6,8 @@ namespace Hibla\Postgres\Internals;
 
 use Hibla\Postgres\Interfaces\PostgresResult;
 use Hibla\Postgres\Manager\PoolManager;
-use Hibla\Postgres\Traits\CancellationHelperTrait;
 use Hibla\Promise\Interfaces\PromiseInterface;
+use Hibla\Promise\Promise;
 use Hibla\Sql\PreparedStatement as PreparedStatementInterface;
 use Hibla\Sql\RowStream as SqlRowStream;
 
@@ -21,8 +21,6 @@ use Hibla\Sql\RowStream as SqlRowStream;
  */
 class ManagedPreparedStatement implements PreparedStatementInterface
 {
-    use CancellationHelperTrait;
-
     private bool $isReleased = false;
 
     /**
@@ -47,7 +45,7 @@ class ManagedPreparedStatement implements PreparedStatementInterface
         /** @var PromiseInterface<PostgresResult> $promise */
         $promise = $this->statement->execute($params);
 
-        return $this->withCancellation($promise);
+        return Promise::propagateCancellation($promise);
     }
 
     /**
@@ -60,7 +58,7 @@ class ManagedPreparedStatement implements PreparedStatementInterface
         /** @var PromiseInterface<SqlRowStream> $promise */
         $promise = $this->statement->executeStream($params);
 
-        return $this->withCancellation($promise);
+        return Promise::propagateCancellation($promise);
     }
 
     /**
