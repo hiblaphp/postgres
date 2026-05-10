@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Hibla\Postgres\Internals;
 
 use Hibla\Postgres\Interfaces\PostgresResult;
-use Hibla\Postgres\Interfaces\PostgresRowStream;
 use Hibla\Postgres\Manager\PoolManager;
 use Hibla\Postgres\Traits\CancellationHelperTrait;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Sql\PreparedStatement as PreparedStatementInterface;
+use Hibla\Sql\RowStream as SqlRowStream;
 
 /**
  * A wrapper around PreparedStatement that manages connection lifecycle.
@@ -53,11 +53,11 @@ class ManagedPreparedStatement implements PreparedStatementInterface
     /**
      * {@inheritdoc}
      *
-     * @return PromiseInterface<PostgresRowStream>
+     * @return PromiseInterface<SqlRowStream>
      */
     public function executeStream(array $params = []): PromiseInterface
     {
-        /** @var PromiseInterface<PostgresRowStream> $promise */
+        /** @var PromiseInterface<SqlRowStream> $promise */
         $promise = $this->statement->executeStream($params);
 
         return $this->withCancellation($promise);

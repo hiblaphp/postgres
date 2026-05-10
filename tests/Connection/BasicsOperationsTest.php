@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-use Hibla\Postgres\Interfaces\PostgresRowStream;
 use Hibla\Promise\Promise;
 use Hibla\Sql\Exceptions\ConnectionException;
 use Hibla\Sql\Exceptions\PreparedException;
 use Hibla\Sql\Exceptions\QueryException;
+use Hibla\Sql\RowStream;
 
 use function Hibla\await;
 
@@ -70,7 +70,7 @@ describe('Basic Connection & Queries', function () {
 
         try {
             $stream = await($conn->streamQuery('SELECT * FROM generate_series(1, 5) AS n'));
-            expect($stream)->toBeInstanceOf(PostgresRowStream::class);
+            expect($stream)->toBeInstanceOf(RowStream::class);
             $rows = [];
             foreach ($stream as $row) {
                 $rows[] = (int) $row['n'];

@@ -179,7 +179,7 @@ class Connection implements ConnectionBridge
     /**
      * Streams a plain SQL query row-by-row.
      *
-     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PostgresRowStream>
+     * @return PromiseInterface<RowStream>
      */
     public function streamQuery(string $sql, int $bufferSize = 100): PromiseInterface
     {
@@ -250,7 +250,7 @@ class Connection implements ConnectionBridge
     /**
      * @param array<string|int, mixed> $params
      *
-     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PostgresRowStream>
+     * @return PromiseInterface<RowStream>
      */
     public function executeStatementStream(PreparedStatement $stmt, array $params, int $bufferSize = 100): PromiseInterface
     {

@@ -8,7 +8,6 @@ use Hibla\Cache\ArrayCache;
 use Hibla\Postgres\Exceptions\ConfigurationException;
 use Hibla\Postgres\Exceptions\NotInitializedException;
 use Hibla\Postgres\Interfaces\PostgresResult;
-use Hibla\Postgres\Interfaces\PostgresRowStream;
 use Hibla\Postgres\Internals\Connection;
 use Hibla\Postgres\Internals\ManagedPreparedStatement;
 use Hibla\Postgres\Internals\PreparedStatement;
@@ -20,6 +19,7 @@ use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
 use Hibla\Sql\IsolationLevelInterface;
 use Hibla\Sql\Result as ResultInterface;
+use Hibla\Sql\RowStream as SqlRowStream;
 use Hibla\Sql\SqlClientInterface;
 use Hibla\Sql\Transaction as TransactionInterface;
 use Hibla\Sql\TransactionOptions;
@@ -353,7 +353,7 @@ final class PostgresClient implements SqlClientInterface
     /**
      * {@inheritdoc}
      *
-     * @return PromiseInterface<PostgresRowStream>
+     * @return PromiseInterface<SqlRowStream>
      */
     public function stream(string $sql, array $params = [], int $bufferSize = 100): PromiseInterface
     {
@@ -389,7 +389,7 @@ final class PostgresClient implements SqlClientInterface
                 }
 
                 $query = $innerPromise->then(
-                    function (PostgresRowStream $stream) use ($conn, $pool, $state): PostgresRowStream {
+                    function (SqlRowStream $stream) use ($conn, $pool, $state): SqlRowStream {
 
                         if ($stream instanceof Internals\RowStream) {
                             $state->released = true;

@@ -8,6 +8,7 @@ use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
 use Hibla\Sql\Exceptions\PreparedException;
 use Hibla\Sql\PreparedStatement as PreparedStatementInterface;
+use Hibla\Sql\RowStream as SqlRowStream;
 
 /**
  * @internal Represents a server-side prepared statement on one PostgreSQL connection.
@@ -50,7 +51,7 @@ class PreparedStatement implements PreparedStatementInterface
     /**
      * {@inheritdoc}
      *
-     * @return PromiseInterface<\Hibla\Postgres\Interfaces\PostgresRowStream>
+     * @return PromiseInterface<SqlRowStream>
      */
     public function executeStream(array $params = [], int $bufferSize = 100): PromiseInterface
     {

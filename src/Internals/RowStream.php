@@ -4,11 +4,11 @@ declare(strict_types=1);
 
 namespace Hibla\Postgres\Internals;
 
-use Hibla\Postgres\Interfaces\PostgresRowStream;
 use Hibla\Postgres\Interfaces\StreamContext;
 use Hibla\Promise\Exceptions\CancelledException;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
+use Hibla\Sql\RowStream as SqlRowStream;
 use SplQueue;
 use Throwable;
 
@@ -17,7 +17,7 @@ use function Hibla\await;
 /**
  * @internal
  */
-class RowStream implements PostgresRowStream, StreamContext
+class RowStream implements SqlRowStream, StreamContext
 {
     /**
      * @var SplQueue<array<string, string|null>>

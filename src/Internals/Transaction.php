@@ -6,7 +6,6 @@ namespace Hibla\Postgres\Internals;
 
 use Hibla\Cache\ArrayCache;
 use Hibla\Postgres\Interfaces\PostgresResult;
-use Hibla\Postgres\Interfaces\PostgresRowStream;
 use Hibla\Postgres\Manager\PoolManager;
 use Hibla\Postgres\Traits\CancellationHelperTrait;
 use Hibla\Promise\Interfaces\PromiseInterface;
@@ -14,6 +13,7 @@ use Hibla\Promise\Promise;
 use Hibla\Sql\Exceptions\TransactionException;
 use Hibla\Sql\PreparedStatement as PreparedStatementInterface;
 use Hibla\Sql\Result as ResultInterface;
+use Hibla\Sql\RowStream as SqlRowStream;
 use Hibla\Sql\Transaction as TransactionInterface;
 
 /**
@@ -98,7 +98,7 @@ class Transaction implements TransactionInterface
     /**
      * {@inheritdoc}
      *
-     * @return PromiseInterface<PostgresRowStream>
+     * @return PromiseInterface<SqlRowStream>
      */
     public function stream(string $sql, array $params = [], int $bufferSize = 100): PromiseInterface
     {
@@ -116,10 +116,8 @@ class Transaction implements TransactionInterface
             // transaction, but $this->failed would stay false — allowing a subsequent
             // commit() to silently send COMMIT to an already-aborted transaction.
             $tracked = $this->trackErrorState($promise)->then(
-                function (PostgresRowStream $stream): PostgresRowStream {
-                    if ($stream instanceof RowStream) {
-                        $this->bindStreamErrorState($stream);
-                    }
+                function (SqlRowStream $stream): SqlRowStream {
+                    $this->bindStreamErrorState($stream);
 
                     return $stream;
                 }
@@ -136,7 +134,7 @@ class Transaction implements TransactionInterface
                 [$stmt, $isCached] = $result;
 
                 $innerPromise = $stmt->executeStream($params, $bufferSize)
-                    ->then(function (PostgresRowStream $stream) use ($stmt, $isCached): PostgresRowStream {
+                    ->then(function (SqlRowStream $stream) use ($stmt, $isCached): SqlRowStream {
                         if ($stream instanceof RowStream) {
                             // Hook into mid-iteration errors/cancellations before registering
                             // the statement-close callback so both share the same underlying

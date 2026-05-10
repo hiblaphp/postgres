@@ -5,11 +5,11 @@ declare(strict_types=1);
 namespace Hibla\Postgres\Internals;
 
 use Hibla\Postgres\Interfaces\PostgresResult;
-use Hibla\Postgres\Interfaces\PostgresRowStream;
 use Hibla\Postgres\Traits\CancellationHelperTrait;
 use Hibla\Promise\Interfaces\PromiseInterface;
 use Hibla\Promise\Promise;
 use Hibla\Sql\PreparedStatement as PreparedStatementInterface;
+use Hibla\Sql\RowStream as SqlRowStream;
 
 /**
  * A wrapper around PreparedStatement used strictly inside Transactions.
@@ -76,18 +76,18 @@ class TransactionPreparedStatement implements PreparedStatementInterface
      * hide it from the iterator — RowStream stores the error internally and throws
      * it from getIterator() on the next iteration.
      *
-     * @return PromiseInterface<PostgresRowStream>
+     * @return PromiseInterface<SqlRowStream>
      */
     public function executeStream(array $params = []): PromiseInterface
     {
-        /** @var PromiseInterface<PostgresRowStream> $promise */
+        /** @var PromiseInterface<SqlRowStream> $promise */
         $promise = $this->statement->executeStream($params);
 
         if ($this->onStreamError !== null) {
             $onStreamError = $this->onStreamError;
 
             $promise = $promise->then(
-                function (PostgresRowStream $stream) use ($onStreamError): PostgresRowStream {
+                function (SqlRowStream $stream) use ($onStreamError): SqlRowStream {
                     if ($stream instanceof RowStream) {
                         // Primary: fires whenever $stream->cancel() is called, regardless
                         // of commandPromise state. Necessary because executeStream() with
