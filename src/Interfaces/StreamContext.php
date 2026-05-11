@@ -9,7 +9,7 @@ interface StreamContext
     public int $bufferSize { get; }
 
     /**
-     * @param array<string, string|null> $row
+     * @param array<string, mixed> $row
      */
     public function push(array $row): void;
 

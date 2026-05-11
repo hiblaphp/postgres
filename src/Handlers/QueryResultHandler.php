@@ -110,8 +110,14 @@ final class QueryResultHandler
 
                 if ($isChunk || $isSingle || $isOk) {
                     $context = $this->ctx->currentStreamContext();
+
+                    // Build caster once for the chunk
+                    $casters = $this->buildTypeCaster($res);
+
                     while ($row = pg_fetch_assoc($res)) {
-                        $context->push($this->normalizeRow($row));
+                        $normalized = $this->normalizeRow($row);
+
+                        $context->push($this->applyTypeCasting($normalized, $casters));
                     }
                 }
                 @pg_free_result($res);
@@ -159,11 +165,19 @@ final class QueryResultHandler
         foreach ($this->ctx->accumulatedResults as $rawRes) {
             $res = $this->getTypedResult($rawRes);
 
+            $casters = $this->buildTypeCaster($res);
+
             // pg_fetch_all returns false when there are zero rows; normalise to
             // an empty array so the Result constructor always receives an array.
             $fetched = pg_fetch_all($res);
             /** @var array<int, array<string, mixed>> $rows */ // @phpstan-ignore-next-line
             $rows = $fetched !== false ? $fetched : [];
+
+            if (\count($casters) > 0) {
+                foreach ($rows as $index => $row) {
+                    $rows[$index] = $this->applyTypeCasting($row, $casters);
+                }
+            }
 
             $affected = pg_affected_rows($res);
             $lastOid = pg_last_oid($res);

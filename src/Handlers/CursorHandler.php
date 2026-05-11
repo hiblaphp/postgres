@@ -172,8 +172,13 @@ final class CursorHandler
         $rowCount = pg_num_rows($res);
 
         if ($rowCount > 0) {
+            // Build the caster map ONCE for this fetched chunk
+            $casters = $this->buildTypeCaster($res);
+
             while ($row = pg_fetch_assoc($res)) {
-                $context->push($this->normalizeRow($row));
+                $normalized = $this->normalizeRow($row);
+
+                $context->push($this->applyTypeCasting($normalized, $casters));
             }
         }
 

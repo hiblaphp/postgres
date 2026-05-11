@@ -20,7 +20,7 @@ use function Hibla\await;
 class RowStream implements SqlRowStream, StreamContext
 {
     /**
-     * @var SplQueue<array<string, string|null>>
+     * @var SplQueue<array<string, mixed>>
      */
     private SplQueue $buffer;
 
@@ -30,7 +30,7 @@ class RowStream implements SqlRowStream, StreamContext
     private array $columnNames = [];
 
     /**
-     * @var Promise<array<string, string|null>|null>|null
+     * @var Promise<array<string, mixed>|null>|null
      */
     private ?Promise $waiter = null;
 
@@ -172,7 +172,7 @@ class RowStream implements SqlRowStream, StreamContext
     /**
      * @inheritdoc
      *
-     * @return \Generator<int, array<string, string|null>, mixed, void>
+     * @return \Generator<int, array<string, mixed>, mixed, void>
      */
     public function getIterator(): \Generator
     {
@@ -263,7 +263,7 @@ class RowStream implements SqlRowStream, StreamContext
     /**
      * @internal
      *
-     * @param array<string, string|null> $row
+     * @param array<string, mixed> $row
      */
     public function push(array $row): void
     {
