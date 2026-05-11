@@ -23,6 +23,7 @@ final readonly class PgSqlConfig
      * @param float $killTimeoutSeconds How long to wait for a pg_cancel_backend() side-channel.
      * @param bool $enableServerSideCancellation Whether to dispatch pg_cancel_backend() on promise cancellation.
      * @param bool $resetConnection Whether to send `DISCARD ALL` on release to clear session state.
+     * @param bool $castPreparedTypes Whether to automatically cast values from prepared statements to PHP native types.
      */
     public function __construct(
         public string $host,
@@ -39,6 +40,7 @@ final readonly class PgSqlConfig
         public float $killTimeoutSeconds = self::DEFAULT_KILL_TIMEOUT_SECONDS,
         public bool $enableServerSideCancellation = false,
         public bool $resetConnection = false,
+        public bool $castPreparedTypes = true,
     ) {
         if ($this->killTimeoutSeconds <= 0) {
             throw new \InvalidArgumentException(
@@ -96,6 +98,9 @@ final readonly class PgSqlConfig
             resetConnection: \is_scalar($config['reset_connection'] ?? false)
                 ? (bool) ($config['reset_connection'] ?? false)
                 : false,
+            castPreparedTypes: \is_scalar($config['cast_prepared_types'] ?? true)
+                ? (bool) ($config['cast_prepared_types'] ?? true)
+                : true,
         );
     }
 
@@ -137,6 +142,7 @@ final readonly class PgSqlConfig
                 ? filter_var($query['enable_server_side_cancellation'], FILTER_VALIDATE_BOOLEAN)
                 : false,
             resetConnection: isset($query['reset_connection']) ? filter_var($query['reset_connection'], FILTER_VALIDATE_BOOLEAN) : false,
+            castPreparedTypes: isset($query['cast_prepared_types']) ? filter_var($query['cast_prepared_types'], FILTER_VALIDATE_BOOLEAN) : true,
         );
     }
 
@@ -157,6 +163,7 @@ final readonly class PgSqlConfig
             killTimeoutSeconds: $this->killTimeoutSeconds,
             enableServerSideCancellation: $enabled,
             resetConnection: $this->resetConnection,
+            castPreparedTypes: $this->castPreparedTypes,
         );
     }
 

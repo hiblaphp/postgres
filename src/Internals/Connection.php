@@ -94,6 +94,7 @@ class Connection implements ConnectionBridge
         };
 
         $this->ctx = new ConnectionContext();
+        $this->ctx->castPreparedTypes = $this->config->castPreparedTypes;
 
         $this->cursorHandler = new CursorHandler($this->ctx, $this);
         $this->queryResultHandler = new QueryResultHandler($this->ctx, $this, $this->cursorHandler);

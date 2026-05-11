@@ -301,6 +301,7 @@ class PoolManager
                 'tracked_connections' => \count($this->connectionCreatedAt),
                 'query_cancellation_enabled' => $this->pgSqlConfig->enableServerSideCancellation,
                 'reset_connection_enabled' => $this->pgSqlConfig->resetConnection,
+                'cast_prepared_types' => $this->pgSqlConfig->castPreparedTypes,
                 'on_connect_hook' => $this->onConnect !== null,
                 'is_graceful_shutdown' => $this->isGracefulShutdown,
             ];

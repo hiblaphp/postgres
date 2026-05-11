@@ -17,13 +17,14 @@ function pgConfig(?PgSqlConfig $config = null): PgSqlConfig
         username: getenv('PG_USER') ?: 'postgres',
         password: getenv('PG_PASSWORD') ?: 'postgres',
         database: getenv('PG_DB') ?: 'postgres',
+        castPreparedTypes: false,
     );
 }
 
-function pgConn(?PgSqlConfig $config = null): Connection
+function pgConn(array $overrides = []): Connection
 {
     return await(
-        Connection::create($config ?? pgConfig())
+        Connection::create(pgPoolConfig($overrides))
     );
 }
 
@@ -58,6 +59,7 @@ function pgPoolConfig(array $overrides = []): array
         'database' => $_ENV['POSTGRES_DATABASE'] ?? 'postgres',
         'username' => $_ENV['POSTGRES_USERNAME'] ?? 'postgres',
         'password' => $_ENV['POSTGRES_PASSWORD'] ?? 'postgres',
+        'cast_prepared_types' => false,
         ...$overrides,
     ];
 }
@@ -105,6 +107,7 @@ function makeClient(array $overrides = []): PostgresClient
         acquireTimeout: $overrides['acquireTimeout'] ?? 10.0,
         enableServerSideCancellation: $overrides['enableServerSideCancellation'] ?? true,
         resetConnection: $overrides['resetConnection'] ?? false,
+        castPreparedTypes: $overrides['castPreparedTypes'] ?? false,
         onConnect: $overrides['onConnect'] ?? null,
     );
 }

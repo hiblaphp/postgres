@@ -86,6 +86,7 @@ final class PostgresClient implements SqlClientInterface
         float $acquireTimeout = 10.0,
         ?bool $enableServerSideCancellation = null,
         ?bool $resetConnection = null,
+        ?bool $castPreparedTypes = null,
         ?callable $onConnect = null,
     ) {
         try {
@@ -97,10 +98,12 @@ final class PostgresClient implements SqlClientInterface
 
             $finalCancellation = $enableServerSideCancellation ?? $params->enableServerSideCancellation;
             $finalReset = $resetConnection ?? $params->resetConnection;
+            $finalCast = $castPreparedTypes ?? $params->castPreparedTypes;
 
             if (
                 $finalCancellation !== $params->enableServerSideCancellation
                 || $finalReset !== $params->resetConnection
+                || $finalCast !== $params->castPreparedTypes
             ) {
                 $params = new PgSqlConfig(
                     host: $params->host,
@@ -117,6 +120,7 @@ final class PostgresClient implements SqlClientInterface
                     killTimeoutSeconds: $params->killTimeoutSeconds,
                     enableServerSideCancellation: $finalCancellation,
                     resetConnection: $finalReset,
+                    castPreparedTypes: $finalCast,
                 );
             }
 

@@ -34,6 +34,10 @@ trait HandlerHelperTrait
      */
     protected function buildTypeCaster(Result $result): array
     {
+        if (! $this->ctx->castPreparedTypes) {
+            return []; // Skip casting if user disabled it for prepared types
+        }
+
         $cmdType = $this->ctx->currentCommand?->type;
         $isPrepared = $cmdType === CommandRequest::TYPE_EXECUTE
             || $cmdType === CommandRequest::TYPE_EXECUTE_STREAM;

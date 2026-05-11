@@ -54,6 +54,8 @@ final class ConnectionContext
 
     public bool $isStreamPaused = false;
 
+    public bool $castPreparedTypes = true;
+
     public readonly CursorState $cursor;
 
     public function __construct()
