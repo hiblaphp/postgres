@@ -48,7 +48,7 @@ describe('Query Cancellation', function (): void {
             try {
                 for ($i = 0; $i < 2; $i++) {
                     $slow = $conn->query('SELECT pg_sleep(2)');
-                    Loop::addTimer(0.05, fn () => $slow->cancel());
+                    Loop::addTimer(0.05, fn() => $slow->cancel());
 
                     $check = await($conn->query('SELECT 1 AS ok'));
                     expect((int) $check->fetchOne()['ok'])->toBe(1);
@@ -129,9 +129,8 @@ describe('Query Cancellation', function (): void {
             $queryPromise->cancel();
         });
 
-        expect(fn () => await($queryPromise))
-            ->toThrow(CancelledException::class)
-        ;
+        expect(fn() => await($queryPromise))
+            ->toThrow(CancelledException::class);
 
         expect(round(microtime(true) - $startTime, 2))->toBeLessThan(1.5);
 
@@ -147,9 +146,8 @@ describe('Query Cancellation', function (): void {
             $queryPromise->cancel();
         });
 
-        expect(fn () => await($queryPromise))
-            ->toThrow(CancelledException::class)
-        ;
+        expect(fn() => await($queryPromise))
+            ->toThrow(CancelledException::class);
 
         expect($conn->wasQueryCancelled())->toBeTrue();
 
@@ -165,9 +163,8 @@ describe('Query Cancellation', function (): void {
             $queryPromise->cancel();
         });
 
-        expect(fn () => await($queryPromise))
-            ->toThrow(CancelledException::class)
-        ;
+        expect(fn() => await($queryPromise))
+            ->toThrow(CancelledException::class);
 
         $conn->clearCancelledFlag();
 
@@ -185,9 +182,8 @@ describe('Query Cancellation', function (): void {
             $queryPromise->cancel();
         });
 
-        expect(fn () => await($queryPromise))
-            ->toThrow(CancelledException::class)
-        ;
+        expect(fn() => await($queryPromise))
+            ->toThrow(CancelledException::class);
 
         if ($conn->wasQueryCancelled()) {
             awaitCancelDrain($conn);
@@ -209,9 +205,9 @@ describe('Query Cancellation', function (): void {
         for ($i = 0; $i < 3; $i++) {
             $slow = $conn->query('SELECT pg_sleep(2)');
 
-            Loop::addTimer(0.1, fn () => $slow->cancel());
+            Loop::addTimer(0.1, fn() => $slow->cancel());
 
-            expect(fn () => await($slow))->toThrow(CancelledException::class);
+            expect(fn() => await($slow))->toThrow(CancelledException::class);
 
             if ($conn->wasQueryCancelled()) {
                 awaitCancelDrain($conn);
@@ -241,9 +237,8 @@ describe('Prepared Statement Cancellation', function (): void {
             $execPromise->cancel();
         });
 
-        expect(fn () => await($execPromise))
-            ->toThrow(CancelledException::class)
-        ;
+        expect(fn() => await($execPromise))
+            ->toThrow(CancelledException::class);
 
         expect(round(microtime(true) - $startTime, 2))->toBeLessThan(1.5);
 
@@ -260,9 +255,8 @@ describe('Prepared Statement Cancellation', function (): void {
             $execPromise->cancel();
         });
 
-        expect(fn () => await($execPromise))
-            ->toThrow(CancelledException::class)
-        ;
+        expect(fn() => await($execPromise))
+            ->toThrow(CancelledException::class);
 
         expect($conn->wasQueryCancelled())->toBeTrue();
 
@@ -279,9 +273,8 @@ describe('Prepared Statement Cancellation', function (): void {
             $execPromise->cancel();
         });
 
-        expect(fn () => await($execPromise))
-            ->toThrow(CancelledException::class)
-        ;
+        expect(fn() => await($execPromise))
+            ->toThrow(CancelledException::class);
 
         if ($conn->wasQueryCancelled()) {
             awaitCancelDrain($conn);
@@ -306,9 +299,8 @@ describe('Prepared Statement Cancellation', function (): void {
             $execPromise->cancel();
         });
 
-        expect(fn () => await($execPromise))
-            ->toThrow(CancelledException::class)
-        ;
+        expect(fn() => await($execPromise))
+            ->toThrow(CancelledException::class);
 
         if ($conn->wasQueryCancelled()) {
             awaitCancelDrain($conn);
@@ -339,9 +331,8 @@ describe('Stream Query Cancellation', function (): void {
             $streamPromise->cancel();
         });
 
-        expect(fn () => await($streamPromise))
-            ->toThrow(CancelledException::class)
-        ;
+        expect(fn() => await($streamPromise))
+            ->toThrow(CancelledException::class);
 
         expect(round(microtime(true) - $startTime, 2))->toBeLessThan(1.5);
 
@@ -357,9 +348,8 @@ describe('Stream Query Cancellation', function (): void {
             $streamPromise->cancel();
         });
 
-        expect(fn () => await($streamPromise))
-            ->toThrow(CancelledException::class)
-        ;
+        expect(fn() => await($streamPromise))
+            ->toThrow(CancelledException::class);
 
         expect($conn->wasQueryCancelled())->toBeTrue();
 
@@ -375,9 +365,8 @@ describe('Stream Query Cancellation', function (): void {
             $streamPromise->cancel();
         });
 
-        expect(fn () => await($streamPromise))
-            ->toThrow(CancelledException::class)
-        ;
+        expect(fn() => await($streamPromise))
+            ->toThrow(CancelledException::class);
 
         if ($conn->wasQueryCancelled()) {
             awaitCancelDrain($conn);
@@ -559,9 +548,8 @@ describe('Execute Stream Cancellation', function (): void {
             $streamPromise->cancel();
         });
 
-        expect(fn () => await($streamPromise))
-            ->toThrow(CancelledException::class)
-        ;
+        expect(fn() => await($streamPromise))
+            ->toThrow(CancelledException::class);
 
         expect(round(microtime(true) - $startTime, 2))->toBeLessThan(1.5);
 
@@ -578,9 +566,8 @@ describe('Execute Stream Cancellation', function (): void {
             $streamPromise->cancel();
         });
 
-        expect(fn () => await($streamPromise))
-            ->toThrow(CancelledException::class)
-        ;
+        expect(fn() => await($streamPromise))
+            ->toThrow(CancelledException::class);
 
         expect($conn->wasQueryCancelled())->toBeTrue();
 
@@ -597,9 +584,8 @@ describe('Execute Stream Cancellation', function (): void {
             $streamPromise->cancel();
         });
 
-        expect(fn () => await($streamPromise))
-            ->toThrow(CancelledException::class)
-        ;
+        expect(fn() => await($streamPromise))
+            ->toThrow(CancelledException::class);
 
         if ($conn->wasQueryCancelled()) {
             awaitCancelDrain($conn);
@@ -647,9 +633,10 @@ describe('Execute Stream Cancellation', function (): void {
         $stmt = await($conn->prepare(twentyRowPgPreparedSql()));
         $stream = await($conn->executeStatementStream($stmt, [20]));
 
+        await($stream->waitForCommand());
+
         foreach ($stream as $row) {
             $stream->cancel();
-
             break;
         }
 
@@ -753,9 +740,8 @@ describe('Execute Stream Cancellation', function (): void {
             $streamPromise->cancel();
         });
 
-        expect(fn () => await($streamPromise))
-            ->toThrow(CancelledException::class)
-        ;
+        expect(fn() => await($streamPromise))
+            ->toThrow(CancelledException::class);
 
         if ($conn->wasQueryCancelled()) {
             awaitCancelDrain($conn);
@@ -824,9 +810,9 @@ describe('No-Drain Recovery (Postgres-specific)', function (): void {
 
         $slow = $conn->query('SELECT pg_sleep(2)');
 
-        Loop::addTimer(0.1, fn () => $slow->cancel());
+        Loop::addTimer(0.1, fn() => $slow->cancel());
 
-        expect(fn () => await($slow))->toThrow(CancelledException::class);
+        expect(fn() => await($slow))->toThrow(CancelledException::class);
 
         await($conn->ping());
         $conn->clearCancelledFlag();
@@ -845,11 +831,11 @@ describe('No-Drain Recovery (Postgres-specific)', function (): void {
         $conn = pgConnWith();
 
         $slow = $conn->query('SELECT pg_sleep(2)');
-        Loop::addTimer(0.1, fn () => $slow->cancel());
+        Loop::addTimer(0.1, fn() => $slow->cancel());
 
         $follow = $conn->query('SELECT 99 AS val');
 
-        expect(fn () => await($slow))->toThrow(CancelledException::class);
+        expect(fn() => await($slow))->toThrow(CancelledException::class);
 
         $result = await($follow);
 
