@@ -50,9 +50,9 @@ final class PubSubHandler
 
         while ($notify = @pg_get_notify($conn, \PGSQL_ASSOC)) {
             $this->bridge->dispatchNotification(
-                $notify['message'],
-                $notify['payload'],
-                $notify['pid']
+                (string) $notify['message'],
+                (string) $notify['payload'],
+                (int) $notify['pid']
             );
         }
     }

@@ -107,8 +107,9 @@ final class PostgresListener implements PostgresListenerInterface
             return Promise::resolved();
         }
 
-        /** @var PromiseInterface<void> */
         return $this->connection->query('UNLISTEN *')
+            ->then(function (): void {
+            })
             ->finally(function (): void {
                 $this->connection->close();
             })
