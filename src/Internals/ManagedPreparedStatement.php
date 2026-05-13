@@ -19,7 +19,7 @@ use Hibla\Sql\RowStream as SqlRowStream;
  *
  * This must not be instantiated directly.
  */
-class ManagedPreparedStatement implements PreparedStatementInterface
+final class ManagedPreparedStatement implements PreparedStatementInterface
 {
     private bool $isReleased = false;
 

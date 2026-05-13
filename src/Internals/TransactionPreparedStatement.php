@@ -22,7 +22,7 @@ use Hibla\Sql\RowStream as SqlRowStream;
  *
  * @internal
  */
-class TransactionPreparedStatement implements PreparedStatementInterface
+final class TransactionPreparedStatement implements PreparedStatementInterface
 {
     private bool $isClosed = false;
 

@@ -17,7 +17,7 @@ use Hibla\Sql\RowStream as SqlRowStream;
  * be constructed directly. The statement is automatically deallocated from the
  * server when close() is called or the object is garbage-collected.
  */
-class PreparedStatement implements PreparedStatementInterface
+final class PreparedStatement implements PreparedStatementInterface
 {
     private bool $isClosed = false;
 

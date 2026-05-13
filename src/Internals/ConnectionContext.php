@@ -70,14 +70,15 @@ final class ConnectionContext
 
     /**
      * Returns the current command's context narrowed to StreamContext.
-     * Only valid during streaming commands — asserts at runtime and
+     * Only valid during streaming commands and asserts at runtime and
      * gives PHPStan a concrete type to work with.
      */
-    public function currentStreamContext(): StreamContext
-    {
-        assert($this->currentCommand !== null);
-        assert($this->currentCommand->context instanceof StreamContext);
+    public StreamContext $currentStreamContext {
+        get {
+            assert($this->currentCommand !== null);
+            assert($this->currentCommand->context instanceof StreamContext);
 
-        return $this->currentCommand->context;
+            return $this->currentCommand->context;
+        }
     }
 }

@@ -126,7 +126,7 @@ final class CursorHandler
     public function sendFetch(): void
     {
         $conn = $this->getTypedConnection();
-        $context = $this->ctx->currentStreamContext();
+        $context = $this->ctx->currentStreamContext;
 
         $sent = (bool) @pg_send_query(
             $conn,
@@ -168,7 +168,7 @@ final class CursorHandler
 
     private function stepFetch(PostgresResult $res): void
     {
-        $context = $this->ctx->currentStreamContext();
+        $context = $this->ctx->currentStreamContext;
         $rowCount = pg_num_rows($res);
 
         if ($rowCount > 0) {
@@ -202,7 +202,7 @@ final class CursorHandler
     private function stepClose(PostgresResult $res): void
     {
         $conn = $this->getTypedConnection();
-        $context = $this->ctx->currentStreamContext();
+        $context = $this->ctx->currentStreamContext;
 
         @pg_free_result($res);
 
@@ -243,7 +243,7 @@ final class CursorHandler
     {
         $conn = $this->getTypedConnection();
         $cursor = $this->ctx->cursor;
-        $context = $this->ctx->currentStreamContext();
+        $context = $this->ctx->currentStreamContext;
 
         $sql = $cursor->ownsTransaction
             ? "CLOSE {$cursor->name}; COMMIT"

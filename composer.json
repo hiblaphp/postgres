@@ -27,7 +27,8 @@
         "pestphp/pest": "^3.0",
         "phpstan/phpstan": "^2.1",
         "phpstan/phpstan-strict-rules": "^2.0",
-        "phpstan/extension-installer": "^1.4"
+        "phpstan/extension-installer": "^1.4",
+        "mockery/mockery": "^1.6"
     },
     "scripts": {
         "test": "./vendor/bin/pest",

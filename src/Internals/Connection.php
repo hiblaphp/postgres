@@ -29,7 +29,7 @@ use Throwable;
  *     methods without a circular class dependency.
  *   - Delegates all I/O and protocol logic to the four handler classes.
  */
-class Connection implements ConnectionBridge
+final class Connection implements ConnectionBridge
 {
     private readonly ConnectionContext $ctx;
 

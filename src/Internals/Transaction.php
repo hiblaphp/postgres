@@ -20,7 +20,7 @@ use Hibla\Sql\Transaction as TransactionInterface;
  *
  * @internal Created by PostgresClient::beginTransaction() - do not instantiate directly.
  */
-class Transaction implements TransactionInterface
+final class Transaction implements TransactionInterface
 {
     /**
      * @var list<callable(): void>

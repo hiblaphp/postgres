@@ -17,7 +17,7 @@ use function Hibla\await;
 /**
  * @internal
  */
-class RowStream implements SqlRowStream, StreamContext
+final class RowStream implements SqlRowStream, StreamContext
 {
     /**
      * @var SplQueue<array<string, mixed>>

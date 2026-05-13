@@ -71,7 +71,7 @@ final class QueryResultHandler
 
             // Backpressure: pause until the consumer drains below half-capacity.
             if ($isStream) {
-                $context = $this->ctx->currentStreamContext();
+                $context = $this->ctx->currentStreamContext;
                 if ($context->isFull()) {
                     $this->bridge->pauseStream();
 
@@ -90,7 +90,7 @@ final class QueryResultHandler
                 }
 
                 if ($isStream) {
-                    $this->ctx->currentStreamContext()->complete();
+                    $this->ctx->currentStreamContext->complete();
                     $this->bridge->finishCommand(null, null);
                 } else {
                     $this->processAccumulatedResults();
@@ -115,7 +115,7 @@ final class QueryResultHandler
                 $isOk = $status === PGSQL_TUPLES_OK;
 
                 if ($isChunk || $isSingle || $isOk) {
-                    $context = $this->ctx->currentStreamContext();
+                    $context = $this->ctx->currentStreamContext;
 
                     // Build caster once for the chunk
                     $casters = $this->buildTypeCaster($res);

@@ -11,7 +11,7 @@ use Hibla\Postgres\Interfaces\PostgresResult;
  *
  * @internal
  */
-class Result implements PostgresResult
+final class Result implements PostgresResult
 {
     /**
      * @inheritDoc
