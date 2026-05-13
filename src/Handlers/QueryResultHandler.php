@@ -25,6 +25,7 @@ final class QueryResultHandler
         private readonly ConnectionContext $ctx,
         private readonly ConnectionBridge $bridge,
         private readonly CursorHandler $cursorHandler,
+        private readonly PubSubHandler $pubSubHandler,
     ) {
     }
 
@@ -41,6 +42,11 @@ final class QueryResultHandler
             ));
 
             return;
+        }
+
+        // Cooperative drain: if a notification arrives mid-query, process it now
+        if ($this->ctx->isListening) {
+            $this->pubSubHandler->drain();
         }
 
         if ($this->ctx->cursor->phase !== CursorPhase::None) {

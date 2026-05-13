@@ -64,4 +64,9 @@ interface ConnectionBridge
      * Drains libpq's internal result buffer (used on stream resume).
      */
     public function drainResults(): void;
+
+    /**
+     * Dispatches an asynchronous notification received from the server.
+     */
+    public function dispatchNotification(string $channel, string $payload, int $pid): void;
 }

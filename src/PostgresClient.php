@@ -7,9 +7,11 @@ namespace Hibla\Postgres;
 use Hibla\Cache\ArrayCache;
 use Hibla\Postgres\Exceptions\ConfigurationException;
 use Hibla\Postgres\Exceptions\NotInitializedException;
+use Hibla\Postgres\Interfaces\PostgresListener;
 use Hibla\Postgres\Interfaces\PostgresResult;
 use Hibla\Postgres\Internals\Connection;
 use Hibla\Postgres\Internals\ManagedPreparedStatement;
+use Hibla\Postgres\Internals\PostgresListener as InternalListener;
 use Hibla\Postgres\Internals\PreparedStatement;
 use Hibla\Postgres\Internals\Transaction;
 use Hibla\Postgres\Manager\PoolManager;
@@ -36,6 +38,8 @@ use function Hibla\await;
 final class PostgresClient implements SqlClientInterface
 {
     private ?PoolManager $pool = null;
+
+    private readonly PgSqlConfig $config;
 
     /**
      * @var \WeakMap<Connection, ArrayCache>|null
@@ -124,6 +128,8 @@ final class PostgresClient implements SqlClientInterface
                 );
             }
 
+            $this->config = $params;
+
             $this->pool = new PoolManager(
                 config: $params,
                 maxSize: $maxConnections,
@@ -175,6 +181,44 @@ final class PostgresClient implements SqlClientInterface
 
             return $clientStats;
         }
+    }
+
+    /**
+     * Sends an asynchronous notification to a PostgreSQL channel.
+     *
+     * This uses a standard connection from the pool.
+     *
+     * @param string $channel The name of the channel.
+     * @param string $payload Optional payload to send with the notification.
+     *
+     * @return PromiseInterface<void>
+     */
+    public function notify(string $channel, string $payload = ''): PromiseInterface
+    {
+        return Promise::propagateCancellation(
+            $this->query('SELECT pg_notify(?, ?)', [$channel, $payload])
+                ->then(function (): void {
+                })
+        );
+    }
+
+    /**
+     * Creates a dedicated, unpooled PostgresListener for Pub/Sub.
+     *
+     * This creates a standalone TCP connection to PostgreSQL that is completely
+     * isolated from the connection pool. This ensures that listening to channels
+     * does not consume your pool capacity or get interrupted by standard queries.
+     *
+     * @return PromiseInterface<PostgresListener>
+     */
+    public function createListener(): PromiseInterface
+    {
+        // Create a brand new connection bypassing the PoolManager entirely
+        return Connection::create($this->config)
+            ->then(function (Connection $connection) {
+                return new InternalListener($connection);
+            })
+        ;
     }
 
     /**

@@ -8,6 +8,7 @@ use Hibla\EventLoop\Loop;
 use Hibla\Postgres\Enums\ConnectionState;
 use Hibla\Postgres\Handlers\ConnectHandler;
 use Hibla\Postgres\Handlers\CursorHandler;
+use Hibla\Postgres\Handlers\PubSubHandler;
 use Hibla\Postgres\Handlers\QueryResultHandler;
 use Hibla\Postgres\Handlers\StreamHandler;
 use Hibla\Postgres\Interfaces\ConnectionBridge;
@@ -40,7 +41,14 @@ class Connection implements ConnectionBridge
 
     private readonly StreamHandler $streamHandler;
 
+    private readonly PubSubHandler $pubSubHandler;
+
     private readonly PgSqlConfig $config;
+
+    /**
+     * @var \Closure(string, string, int): void|null
+     */
+    private ?\Closure $notificationCallback = null;
 
     /**
      * Monotonically increasing counter used to generate unique statement names.
@@ -96,8 +104,9 @@ class Connection implements ConnectionBridge
         $this->ctx = new ConnectionContext();
         $this->ctx->castPreparedTypes = $this->config->castPreparedTypes;
 
+        $this->pubSubHandler = new PubSubHandler($this->ctx, $this);
         $this->cursorHandler = new CursorHandler($this->ctx, $this);
-        $this->queryResultHandler = new QueryResultHandler($this->ctx, $this, $this->cursorHandler);
+        $this->queryResultHandler = new QueryResultHandler($this->ctx, $this, $this->cursorHandler, $this->pubSubHandler);
         $this->streamHandler = new StreamHandler($this->ctx, $this, $this->cursorHandler, $this->queryResultHandler);
         $this->connectHandler = new ConnectHandler($this->ctx, $this);
     }
@@ -567,6 +576,26 @@ class Connection implements ConnectionBridge
     }
 
     /**
+     * Registers a callback to receive asynchronous notifications.
+     *
+     * @param \Closure(string $channel, string $payload, int $pid): void|null $callback
+     */
+    public function setNotificationCallback(?\Closure $callback): void
+    {
+        $this->notificationCallback = $callback;
+    }
+
+    /**
+     * Triggered by PubSubHandler or QueryResultHandler when a notification is drained.
+     */
+    public function dispatchNotification(string $channel, string $payload, int $pid): void
+    {
+        if ($this->notificationCallback !== null) {
+            ($this->notificationCallback)($channel, $payload, $pid);
+        }
+    }
+
+    /**
      * Cancels the currently executing command and clears the queue.
      * Used to interrupt long-running queries during an emergency rollback.
      */
@@ -913,6 +942,12 @@ class Connection implements ConnectionBridge
 
     public function addQueryReadWatcher(): void
     {
+        // Take back control from the idle PubSub watcher if it was active
+        if ($this->ctx->pubSubWatcherId !== null) {
+            Loop::removeReadWatcher($this->ctx->pubSubWatcherId);
+            $this->ctx->pubSubWatcherId = null;
+        }
+
         if ($this->ctx->queryWatcherId === null && $this->ctx->socket !== null) {
             $this->ctx->queryWatcherId = Loop::addReadWatcher(
                 $this->ctx->socket,
@@ -927,6 +962,14 @@ class Connection implements ConnectionBridge
             Loop::removeReadWatcher($this->ctx->queryWatcherId);
             $this->ctx->queryWatcherId = null;
         }
+
+        // Handoff to the idle PubSub watcher if the connection is in listen mode
+        if ($this->ctx->isListening && $this->ctx->socket !== null && $this->ctx->pubSubWatcherId === null) {
+            $this->ctx->pubSubWatcherId = Loop::addReadWatcher(
+                $this->ctx->socket,
+                $this->pubSubHandler->handle(...)
+            );
+        }
     }
 
     public function pauseStream(): void
@@ -937,6 +980,15 @@ class Connection implements ConnectionBridge
     public function drainResults(): void
     {
         $this->queryResultHandler->drain();
+    }
+
+    /**
+     * Toggles whether this connection should maintain an idle read watcher
+     * to intercept asynchronous notifications.
+     */
+    public function setIsListening(bool $isListening): void
+    {
+        $this->ctx->isListening = $isListening;
     }
 
     /**
@@ -964,7 +1016,15 @@ class Connection implements ConnectionBridge
             $this->ctx->pollWatcherType = null;
         }
 
+        // Temporarily disable listening so removeQueryReadWatcher doesn't re-arm the pubSub watcher
+        $this->ctx->isListening = false;
+
         $this->removeQueryReadWatcher();
+
+        if ($this->ctx->pubSubWatcherId !== null) {
+            Loop::removeReadWatcher($this->ctx->pubSubWatcherId);
+            $this->ctx->pubSubWatcherId = null;
+        }
     }
 
     /**

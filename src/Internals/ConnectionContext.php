@@ -50,9 +50,13 @@ final class ConnectionContext
 
     public ?string $queryWatcherId = null;
 
+    public ?string $pubSubWatcherId = null;
+
     public ?Throwable $queryError = null;
 
     public bool $isStreamPaused = false;
+
+    public bool $isListening = false;
 
     public bool $castPreparedTypes = true;
 
