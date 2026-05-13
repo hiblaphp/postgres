@@ -7,7 +7,6 @@ namespace Hibla\Postgres\Handlers;
 use Hibla\Postgres\Interfaces\ConnectionBridge;
 use Hibla\Postgres\Internals\ConnectionContext;
 use Hibla\Postgres\Traits\HandlerHelperTrait;
-use Hibla\Sql\Exceptions\ConnectionException;
 
 /**
  * @internal Handles asynchronous LISTEN/NOTIFY messages.
@@ -23,16 +22,14 @@ final class PubSubHandler
     }
 
     /**
-     * Called by the Event Loop when the connection is idle but listening.
-     */
+       * Called by the Event Loop when the connection is idle but listening.
+       */
     public function handle(): void
     {
         $conn = $this->getTypedConnection();
 
         if (! @pg_consume_input($conn)) {
-            $this->bridge->finishCommand(new ConnectionException(
-                'Connection lost while listening: ' . pg_last_error($conn)
-            ));
+            $this->bridge->forceClose();
 
             return;
         }

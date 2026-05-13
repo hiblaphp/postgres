@@ -206,19 +206,25 @@ final class PostgresClient implements SqlClientInterface
      * Creates a dedicated, unpooled PostgresListener for Pub/Sub.
      *
      * This creates a standalone TCP connection to PostgreSQL that is completely
-     * isolated from the connection pool. This ensures that listening to channels
-     * does not consume your pool capacity or get interrupted by standard queries.
+     * isolated from the connection pool. It features transparent auto-reconnection
+     * in the event of a network drop or database restart.
+     *
+     * @param float $minReconnectInterval The initial wait time in seconds before reconnecting.
+     * @param float $maxReconnectInterval The maximum wait time in seconds for exponential backoff.
      *
      * @return PromiseInterface<PostgresListener>
      */
-    public function createListener(): PromiseInterface
+    public function createListener(float $minReconnectInterval = 1.0, float $maxReconnectInterval = 30.0): PromiseInterface
     {
-        // Create a brand new connection bypassing the PoolManager entirely
-        return Connection::create($this->config)
-            ->then(function (Connection $connection) {
-                return new InternalListener($connection);
-            })
-        ;
+        $listener = new InternalListener(
+            $this->config,
+            $minReconnectInterval,
+            $maxReconnectInterval
+        );
+
+        return $listener->initialize()->then(function () use ($listener) {
+            return $listener;
+        });
     }
 
     /**

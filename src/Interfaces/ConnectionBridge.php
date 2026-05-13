@@ -69,4 +69,9 @@ interface ConnectionBridge
      * Dispatches an asynchronous notification received from the server.
      */
     public function dispatchNotification(string $channel, string $payload, int $pid): void;
+
+    /**
+     * Forcibly closes the connection immediately. Used when the socket is dead.
+     */
+    public function forceClose(): void;
 }

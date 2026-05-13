@@ -51,6 +51,11 @@ final class Connection implements ConnectionBridge
     private ?\Closure $notificationCallback = null;
 
     /**
+     * @var \Closure(): void|null
+     */
+    private ?\Closure $onCloseCallback = null;
+
+    /**
      * Monotonically increasing counter used to generate unique statement names.
      */
     private int $stmtCounter = 0;
@@ -490,6 +495,10 @@ final class Connection implements ConnectionBridge
     {
         $this->removeQueryReadWatcher();
 
+        if ($error instanceof ConnectionException && $this->ctx->state !== ConnectionState::CLOSED) {
+            $this->close();
+        }
+
         $cmd = $this->ctx->currentCommand;
         $this->ctx->currentCommand = null;
 
@@ -569,6 +578,9 @@ final class Connection implements ConnectionBridge
                 default => $this->processQuery($cmd),
             };
         } catch (Throwable $e) {
+            if ($this->ctx->connection instanceof \PgSql\Connection && @pg_connection_status($this->ctx->connection) === PGSQL_CONNECTION_BAD) {
+                $e = new ConnectionException('Connection to server lost: ' . $e->getMessage(), (int) $e->getCode(), $e);
+            }
             // The pg_send_* helpers throw *before* returning, so no query
             // could have been dispatched at this point; nothing to cancel.
             $this->finishCommand($e);
@@ -583,6 +595,19 @@ final class Connection implements ConnectionBridge
     public function setNotificationCallback(?\Closure $callback): void
     {
         $this->notificationCallback = $callback;
+    }
+
+    public function onClose(\Closure $callback): void
+    {
+        $this->onCloseCallback = $callback;
+    }
+
+    /**
+     * Forcibly closes the connection immediately. Used when the socket is dead. this is used to trigger the auto-reconnect hook for listeners.
+     */
+    public function forceClose(): void
+    {
+        $this->close();
     }
 
     /**
@@ -819,6 +844,12 @@ final class Connection implements ConnectionBridge
             $cmd->promise->reject($exception);
             $cmd->promise->catch(static function (): void {
             });
+
+            if ($this->onCloseCallback !== null) {
+                $cb = $this->onCloseCallback;
+                $this->onCloseCallback = null;
+                $cb();
+            }
         }
     }
 
