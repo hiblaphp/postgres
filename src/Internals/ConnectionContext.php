@@ -62,12 +62,6 @@ final class ConnectionContext
 
     public readonly CursorState $cursor;
 
-    public function __construct()
-    {
-        $this->commandQueue = new SplQueue();
-        $this->cursor = new CursorState();
-    }
-
     /**
      * Returns the current command's context narrowed to StreamContext.
      * Only valid during streaming commands and asserts at runtime and
@@ -80,5 +74,11 @@ final class ConnectionContext
 
             return $this->currentCommand->context;
         }
+    }
+
+    public function __construct()
+    {
+        $this->commandQueue = new SplQueue();
+        $this->cursor = new CursorState();
     }
 }
