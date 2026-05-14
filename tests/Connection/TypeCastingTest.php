@@ -194,4 +194,228 @@ describe('Postgres Type Casting consistency', function (): void {
 
         $client->close();
     });
+
+    it('casts primitive postgres arrays to native PHP arrays in buffered prepared statements', function (): void {
+        $conn = pgConn(['cast_prepared_types' => true]);
+
+        $sql = '
+        SELECT
+            $1::int[] AS int_array,
+            $2::bool[] AS bool_array,
+            $3::float[] AS float_array,
+            $4::text[] AS text_array
+        ';
+
+        $stmt   = await($conn->prepare($sql));
+        $result = await($conn->executeStatement($stmt, [
+            '{1,2,3}',
+            '{t,f,t}',
+            '{1.1,2.2,3.3}',
+            '{foo,bar,baz}',
+        ]));
+
+        $row = $result->fetchOne();
+
+        expect($row['int_array'])->toBe([1, 2, 3])
+            ->and($row['bool_array'])->toBe([true, false, true])
+            ->and($row['float_array'])->toBe([1.1, 2.2, 3.3])
+            ->and($row['text_array'])->toBe(['foo', 'bar', 'baz'])
+        ;
+
+        await($stmt->close());
+        $conn->close();
+    });
+
+    it('casts postgres arrays containing NULLs to PHP arrays with null elements in prepared statements', function (): void {
+        $conn = pgConn(['cast_prepared_types' => true]);
+
+        $sql = '
+        SELECT
+            $1::int[]  AS int_array_with_null,
+            $2::bool[] AS bool_array_with_null,
+            $3::text[] AS text_array_with_null
+        ';
+
+        $stmt   = await($conn->prepare($sql));
+        $result = await($conn->executeStatement($stmt, [
+            '{1,NULL,3}',
+            '{t,NULL,f}',
+            '{foo,NULL,bar}',
+        ]));
+
+        $row = $result->fetchOne();
+
+        expect($row['int_array_with_null'])->toBe([1, null, 3])
+            ->and($row['bool_array_with_null'])->toBe([true, null, false])
+            ->and($row['text_array_with_null'])->toBe(['foo', null, 'bar'])
+        ;
+
+        await($stmt->close());
+        $conn->close();
+    });
+
+    it('casts multidimensional postgres arrays to nested PHP arrays in prepared statements', function (): void {
+        $conn = pgConn(['cast_prepared_types' => true]);
+
+        $sql = '
+        SELECT
+            $1::int[][]  AS matrix_int,
+            $2::bool[][] AS matrix_bool
+    ';
+
+        $stmt   = await($conn->prepare($sql));
+        $result = await($conn->executeStatement($stmt, [
+            '{{1,2},{3,4}}',
+            '{{t,f},{f,t}}',
+        ]));
+
+        $row = $result->fetchOne();
+
+        expect($row['matrix_int'])->toBe([[1, 2], [3, 4]])
+            ->and($row['matrix_bool'])->toBe([[true, false], [false, true]])
+        ;
+
+        await($stmt->close());
+        $conn->close();
+    });
+
+    it('returns numeric and decimal arrays as raw string arrays to preserve precision', function (): void {
+        $conn = pgConn(['cast_prepared_types' => true]);
+
+        // numeric/decimal are intentionally not cast to float.
+        // Callers should use BCMath or brick/math on the raw string values.
+        $sql = '
+        SELECT
+            $1::numeric[] AS numeric_array,
+            $2::decimal[] AS decimal_array
+    ';
+
+        $stmt   = await($conn->prepare($sql));
+        $result = await($conn->executeStatement($stmt, [
+            '{1.1111111111111111,2.9999999999999999}',
+            '{99999999999999999.99}',
+        ]));
+
+        $row = $result->fetchOne();
+
+        expect($row['numeric_array'])->toBe(['1.1111111111111111', '2.9999999999999999'])
+            ->and($row['decimal_array'])->toBe(['99999999999999999.99'])
+        ;
+
+        await($stmt->close());
+        $conn->close();
+    });
+
+    it('returns json and jsonb arrays as raw string arrays in prepared statements, leaving decoding to the caller', function (): void {
+        $conn = pgConn(['cast_prepared_types' => true]);
+
+        // JSON decoding is a domain concern, the parser extracts the raw
+        // string and the caller decides how to decode and handle errors.
+        $sql = '
+        SELECT
+            $1::json[]  AS json_array,
+            $2::jsonb[] AS jsonb_array
+    ';
+
+        $stmt   = await($conn->prepare($sql));
+        $result = await($conn->executeStatement($stmt, [
+            '{"{\\"a\\":1}","{\\"b\\":2}"}',
+            '{"{\\"x\\":1}","{\\"y\\":2}"}',
+        ]));
+
+        $row = $result->fetchOne();
+
+        expect($row['json_array'])->toBe(['{"a":1}', '{"b":2}'])
+            ->and($row['jsonb_array'])->toBe(['{"x": 1}', '{"y": 2}'])
+        ;
+
+        await($stmt->close());
+        $conn->close();
+    });
+
+    it('returns raw array literal strings for plain queries regardless of cast_prepared_types', function (): void {
+        $conn = pgConn(['cast_prepared_types' => true]);
+
+        // Plain queries are never cast — arrays come back as raw Postgres literals.
+        $sql = "
+        SELECT
+            ARRAY[1, 2, 3] AS int_array,
+            ARRAY[true, false, true] AS bool_array
+    ";
+
+        $result = await($conn->query($sql));
+        $row    = $result->fetchOne();
+
+        expect($row['int_array'])->toBe('{1,2,3}')
+            ->and($row['bool_array'])->toBe('{t,f,t}')
+        ;
+
+        $conn->close();
+    });
+
+    it('returns raw array literal strings from prepared statements when cast_prepared_types is false', function (): void {
+        $conn = pgConn(['cast_prepared_types' => false]);
+
+        $sql = '
+        SELECT
+            $1::int[]  AS int_array,
+            $2::bool[] AS bool_array
+    ';
+
+        $stmt   = await($conn->prepare($sql));
+        $result = await($conn->executeStatement($stmt, ['{1,2,3}', '{t,f,t}']));
+
+        $row = $result->fetchOne();
+
+        expect($row['int_array'])->toBe('{1,2,3}')
+            ->and($row['bool_array'])->toBe('{t,f,t}')
+        ;
+
+        await($stmt->close());
+        $conn->close();
+    });
+
+    it('casts postgres arrays correctly in streamed prepared statements', function (): void {
+        $conn = pgConn(['cast_prepared_types' => true]);
+
+        $sql = '
+        SELECT
+            $1::int[] AS int_array,
+            $2::bool[] AS bool_array
+        FROM generate_series(1, 1)
+       ';
+
+        $stmt   = await($conn->prepare($sql));
+        $stream = await($conn->executeStatementStream($stmt, ['{1,2,3}', '{t,f,t}'], 100));
+
+        $rows = [];
+        foreach ($stream as $row) {
+            $rows[] = $row;
+        }
+
+        expect($rows)->toHaveCount(1);
+
+        expect($rows[0]['int_array'])->toBe([1, 2, 3])
+            ->and($rows[0]['bool_array'])->toBe([true, false, true])
+        ;
+
+        await($stmt->close());
+        $conn->close();
+    });
+
+    it('casts an empty postgres array to an empty PHP array in prepared statements', function (): void {
+        $conn = pgConn(['cast_prepared_types' => true]);
+
+        $sql = 'SELECT $1::int[] AS empty_array';
+
+        $stmt   = await($conn->prepare($sql));
+        $result = await($conn->executeStatement($stmt, ['{}']));
+
+        $row = $result->fetchOne();
+
+        expect($row['empty_array'])->toBe([]);
+
+        await($stmt->close());
+        $conn->close();
+    });
 });

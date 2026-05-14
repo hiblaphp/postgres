@@ -12,14 +12,15 @@ final class PgArrayParser
     /**
      * Parses a PostgreSQL array literal string (e.g., '{1,2,3}') into a native PHP array.
      *
-     * @param string $data The raw array string from PostgreSQL.
+     * @param string $data     The raw array string from PostgreSQL.
      * @param string $castType The type to cast individual elements to ('int', 'float', 'bool', 'string').
+     *
+     * @return array<int, mixed>
      */
     public static function parse(string $data, string $castType = 'string'): array
     {
         $data = trim($data);
 
-        // Return empty array if it's empty or doesn't start with an array bracket
         if ($data === '' || $data[0] !== '{') {
             return [];
         }
@@ -29,15 +30,18 @@ final class PgArrayParser
         return self::parseRecursive($data, $position, $castType);
     }
 
+    /**
+     * @return array<int, mixed>
+     */
     private static function parseRecursive(string $data, int &$position, string $castType): array
     {
         $result = [];
         $length = \strlen($data);
-        $position++; // Skip the opening '{'
+        $position++;
 
-        $buffer = '';
-        $inQuotes = false;
-        $inEscape = false;
+        $buffer    = '';
+        $inQuotes  = false;
+        $inEscape  = false;
         $wasQuoted = false;
 
         while ($position < $length) {
@@ -62,7 +66,7 @@ final class PgArrayParser
             // Handle quotes
             if ($inQuotes) {
                 if ($char === '"') {
-                    $inQuotes = false;
+                    $inQuotes  = false;
                     $wasQuoted = true;
                 } else {
                     $buffer .= $char;
@@ -73,7 +77,7 @@ final class PgArrayParser
             }
 
             if ($char === '"') {
-                $inQuotes = true;
+                $inQuotes  = true;
                 $wasQuoted = true;
                 $position++;
 
@@ -96,7 +100,6 @@ final class PgArrayParser
                 // Only push if there's actual data, or if it was explicitly quoted (""),
                 // or if it's a null between commas (e.g., {1,,3})
                 if ($buffer !== '' || $wasQuoted || (isset($data[$position - 1]) && $data[$position - 1] === ',')) {
-
                     if (! $wasQuoted && ($buffer === '' || strtoupper($buffer) === 'NULL')) {
                         $result[] = null;
                     } else {
@@ -104,11 +107,11 @@ final class PgArrayParser
                     }
                 }
 
-                $buffer = '';
+                $buffer    = '';
                 $wasQuoted = false;
 
                 if ($char === '}') {
-                    $position++; // Move past '}'
+                    $position++;
 
                     break;
                 }
@@ -125,17 +128,17 @@ final class PgArrayParser
         return $result;
     }
 
-    private static function cast(string $value, string $type): mixed
+    private static function cast(string $value, string $type): int|float|bool|string
     {
         return match ($type) {
-            'int' => (int) $value,
+            'int'   => (int) $value,
             'float' => match (strtoupper($value)) {
-                'NAN' => NAN,
+                'NAN'              => NAN,
                 'INFINITY', 'INF' => INF,
                 '-INFINITY', '-INF' => -INF,
-                default => (float) $value,
+                default            => (float) $value,
             },
-            'bool' => $value === 't',
+            'bool'  => $value === 't',
             default => $value,
         };
     }

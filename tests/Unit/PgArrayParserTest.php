@@ -256,7 +256,8 @@ it('returns raw strings for any unrecognised cast type', function () {
     // Callers are responsible for further casting (e.g. JSON decoding).
     // The parser always falls back to raw strings for unknown types.
     expect(PgArrayParser::parse('{1,2,3}', 'unknown'))->toBe(['1', '2', '3'])
-        ->and(PgArrayParser::parse('{1,2,3}', 'numeric'))->toBe(['1', '2', '3']);
+        ->and(PgArrayParser::parse('{1,2,3}', 'numeric'))->toBe(['1', '2', '3'])
+    ;
 });
 
 it('returns numeric and decimal values as raw strings to preserve precision', function () {
@@ -269,7 +270,8 @@ it('returns numeric and decimal values as raw strings to preserve precision', fu
         ->and(PgArrayParser::parse('{99999999999999999.99}', 'string'))
         ->toBe(['99999999999999999.99'])
         ->and(PgArrayParser::parse('{0.30000000000000004}', 'string'))
-        ->toBe(['0.30000000000000004']);
+        ->toBe(['0.30000000000000004'])
+    ;
 });
 
 it(
@@ -284,14 +286,12 @@ it(
 
 it(
     'returns empty array for a bare opening brace with no closing',
-    fn () =>
-    expect(PgArrayParser::parse('{'))->toBe([])
+    fn () => expect(PgArrayParser::parse('{'))->toBe([])
 );
 
 it(
     'ignores trailing content after the closing brace',
-    fn () =>
-    expect(PgArrayParser::parse('{1,2,3}garbage', 'int'))->toBe([1, 2, 3])
+    fn () => expect(PgArrayParser::parse('{1,2,3}garbage', 'int'))->toBe([1, 2, 3])
 );
 
 it(
@@ -356,13 +356,15 @@ it('parses an array of empty nested arrays', function () {
 it('maintains precision for large numbers', function () {
     $largeInt = '9223372036854775807';
     expect(PgArrayParser::parse('{' . $largeInt . '}', 'int')[0])
-        ->toBe(PHP_INT_MAX);
+        ->toBe(PHP_INT_MAX)
+    ;
 
     // PHP float (IEEE 754 double) gives ~14-15 significant digits;
     // precision beyond that is a PHP limitation, not a parser concern.
     $float = '3.14159265358979';
     expect(PgArrayParser::parse('{' . $float . '}', 'float')[0])
-        ->toBe((float) $float);
+        ->toBe((float) $float)
+    ;
 });
 
 it('handles reasonably deep nesting without crashing', function () {
