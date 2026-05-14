@@ -64,7 +64,8 @@ final class PostgresListener implements PostgresListenerInterface
      */
     public function initialize(): PromiseInterface
     {
-        return $this->getConnection()->then(function (): void {});
+        return $this->getConnection()->then(function (): void {
+        });
     }
 
     /**
@@ -87,7 +88,8 @@ final class PostgresListener implements PostgresListenerInterface
             if ($isFirst) {
                 $conn->setIsListening(true);
 
-                return $conn->query('LISTEN ' . $this->escapeIdentifier($channel))->then(function (): void {});
+                return $conn->query('LISTEN ' . $this->escapeIdentifier($channel))->then(function (): void {
+                });
             }
 
             return;
@@ -116,7 +118,9 @@ final class PostgresListener implements PostgresListenerInterface
         }
 
         return $this->connection->query('UNLISTEN ' . $this->escapeIdentifier($channel))
-            ->then(function (): void {});
+            ->then(function (): void {
+            })
+        ;
     }
 
     /**
@@ -145,10 +149,12 @@ final class PostgresListener implements PostgresListenerInterface
 
         /** @var PromiseInterface<void> */
         return $conn->query('UNLISTEN *')
-            ->then(function (): void {})
+            ->then(function (): void {
+            })
             ->finally(function () use ($conn) {
                 $conn->close();
-            });
+            })
+        ;
     }
 
     /**
@@ -201,7 +207,7 @@ final class PostgresListener implements PostgresListenerInterface
                 if ($subs !== []) {
                     $conn->setIsListening(true);
                     Promise::all($subs)->then(
-                        fn() => $promise->resolve($conn),
+                        fn () => $promise->resolve($conn),
                         function (Throwable $e) use ($promise, $conn): void {
                             $conn->close();
                             $promise->reject($e);
