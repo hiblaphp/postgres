@@ -7,7 +7,7 @@ namespace Hibla\Postgres;
 use Hibla\Cache\ArrayCache;
 use Hibla\Postgres\Exceptions\ConfigurationException;
 use Hibla\Postgres\Exceptions\NotInitializedException;
-use Hibla\Postgres\Interfaces\PostgresListener;
+use Hibla\Postgres\Interfaces\PostgresClientInterface;
 use Hibla\Postgres\Interfaces\PostgresResult;
 use Hibla\Postgres\Internals\Connection;
 use Hibla\Postgres\Internals\ManagedPreparedStatement;
@@ -21,7 +21,6 @@ use Hibla\Promise\Promise;
 use Hibla\Sql\IsolationLevelInterface;
 use Hibla\Sql\Result as ResultInterface;
 use Hibla\Sql\RowStream as SqlRowStream;
-use Hibla\Sql\SqlClientInterface;
 use Hibla\Sql\Transaction as TransactionInterface;
 use Hibla\Sql\TransactionOptions;
 
@@ -35,7 +34,7 @@ use function Hibla\await;
  * Each instance is completely independent, allowing true multi-database support
  * without global state.
  */
-final class PostgresClient implements SqlClientInterface
+final class PostgresClient implements PostgresClientInterface
 {
     private ?PoolManager $pool = null;
 
@@ -184,14 +183,7 @@ final class PostgresClient implements SqlClientInterface
     }
 
     /**
-     * Sends an asynchronous notification to a PostgreSQL channel.
-     *
-     * This uses a standard connection from the pool.
-     *
-     * @param string $channel The name of the channel.
-     * @param string $payload Optional payload to send with the notification.
-     *
-     * @return PromiseInterface<void>
+     * {@inheritDoc}
      */
     public function notify(string $channel, string $payload = ''): PromiseInterface
     {
@@ -203,16 +195,7 @@ final class PostgresClient implements SqlClientInterface
     }
 
     /**
-     * Creates a dedicated, unpooled PostgresListener for Pub/Sub.
-     *
-     * This creates a standalone TCP connection to PostgreSQL that is completely
-     * isolated from the connection pool. It features transparent auto-reconnection
-     * in the event of a network drop or database restart.
-     *
-     * @param float $minReconnectInterval The initial wait time in seconds before reconnecting.
-     * @param float $maxReconnectInterval The maximum wait time in seconds for exponential backoff.
-     *
-     * @return PromiseInterface<PostgresListener>
+     * {@inheritDoc}
      */
     public function createListener(float $minReconnectInterval = 1.0, float $maxReconnectInterval = 30.0): PromiseInterface
     {

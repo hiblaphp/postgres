@@ -206,7 +206,7 @@ describe('Postgres Type Casting consistency', function (): void {
             $4::text[] AS text_array
         ';
 
-        $stmt   = await($conn->prepare($sql));
+        $stmt = await($conn->prepare($sql));
         $result = await($conn->executeStatement($stmt, [
             '{1,2,3}',
             '{t,f,t}',
@@ -236,7 +236,7 @@ describe('Postgres Type Casting consistency', function (): void {
             $3::text[] AS text_array_with_null
         ';
 
-        $stmt   = await($conn->prepare($sql));
+        $stmt = await($conn->prepare($sql));
         $result = await($conn->executeStatement($stmt, [
             '{1,NULL,3}',
             '{t,NULL,f}',
@@ -263,7 +263,7 @@ describe('Postgres Type Casting consistency', function (): void {
             $2::bool[][] AS matrix_bool
     ';
 
-        $stmt   = await($conn->prepare($sql));
+        $stmt = await($conn->prepare($sql));
         $result = await($conn->executeStatement($stmt, [
             '{{1,2},{3,4}}',
             '{{t,f},{f,t}}',
@@ -290,7 +290,7 @@ describe('Postgres Type Casting consistency', function (): void {
             $2::decimal[] AS decimal_array
     ';
 
-        $stmt   = await($conn->prepare($sql));
+        $stmt = await($conn->prepare($sql));
         $result = await($conn->executeStatement($stmt, [
             '{1.1111111111111111,2.9999999999999999}',
             '{99999999999999999.99}',
@@ -317,7 +317,7 @@ describe('Postgres Type Casting consistency', function (): void {
             $2::jsonb[] AS jsonb_array
     ';
 
-        $stmt   = await($conn->prepare($sql));
+        $stmt = await($conn->prepare($sql));
         $result = await($conn->executeStatement($stmt, [
             '{"{\\"a\\":1}","{\\"b\\":2}"}',
             '{"{\\"x\\":1}","{\\"y\\":2}"}',
@@ -337,14 +337,14 @@ describe('Postgres Type Casting consistency', function (): void {
         $conn = pgConn(['cast_prepared_types' => true]);
 
         // Plain queries are never cast — arrays come back as raw Postgres literals.
-        $sql = "
+        $sql = '
         SELECT
             ARRAY[1, 2, 3] AS int_array,
             ARRAY[true, false, true] AS bool_array
-    ";
+    ';
 
         $result = await($conn->query($sql));
-        $row    = $result->fetchOne();
+        $row = $result->fetchOne();
 
         expect($row['int_array'])->toBe('{1,2,3}')
             ->and($row['bool_array'])->toBe('{t,f,t}')
@@ -362,7 +362,7 @@ describe('Postgres Type Casting consistency', function (): void {
             $2::bool[] AS bool_array
     ';
 
-        $stmt   = await($conn->prepare($sql));
+        $stmt = await($conn->prepare($sql));
         $result = await($conn->executeStatement($stmt, ['{1,2,3}', '{t,f,t}']));
 
         $row = $result->fetchOne();
@@ -385,7 +385,7 @@ describe('Postgres Type Casting consistency', function (): void {
         FROM generate_series(1, 1)
        ';
 
-        $stmt   = await($conn->prepare($sql));
+        $stmt = await($conn->prepare($sql));
         $stream = await($conn->executeStatementStream($stmt, ['{1,2,3}', '{t,f,t}'], 100));
 
         $rows = [];
@@ -408,7 +408,7 @@ describe('Postgres Type Casting consistency', function (): void {
 
         $sql = 'SELECT $1::int[] AS empty_array';
 
-        $stmt   = await($conn->prepare($sql));
+        $stmt = await($conn->prepare($sql));
         $result = await($conn->executeStatement($stmt, ['{}']));
 
         $row = $result->fetchOne();

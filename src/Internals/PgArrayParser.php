@@ -12,7 +12,7 @@ final class PgArrayParser
     /**
      * Parses a PostgreSQL array literal string (e.g., '{1,2,3}') into a native PHP array.
      *
-     * @param string $data     The raw array string from PostgreSQL.
+     * @param string $data The raw array string from PostgreSQL.
      * @param string $castType The type to cast individual elements to ('int', 'float', 'bool', 'string').
      *
      * @return array<int, mixed>
@@ -39,9 +39,9 @@ final class PgArrayParser
         $length = \strlen($data);
         $position++;
 
-        $buffer    = '';
-        $inQuotes  = false;
-        $inEscape  = false;
+        $buffer = '';
+        $inQuotes = false;
+        $inEscape = false;
         $wasQuoted = false;
 
         while ($position < $length) {
@@ -66,7 +66,7 @@ final class PgArrayParser
             // Handle quotes
             if ($inQuotes) {
                 if ($char === '"') {
-                    $inQuotes  = false;
+                    $inQuotes = false;
                     $wasQuoted = true;
                 } else {
                     $buffer .= $char;
@@ -77,7 +77,7 @@ final class PgArrayParser
             }
 
             if ($char === '"') {
-                $inQuotes  = true;
+                $inQuotes = true;
                 $wasQuoted = true;
                 $position++;
 
@@ -107,7 +107,7 @@ final class PgArrayParser
                     }
                 }
 
-                $buffer    = '';
+                $buffer = '';
                 $wasQuoted = false;
 
                 if ($char === '}') {
@@ -131,14 +131,14 @@ final class PgArrayParser
     private static function cast(string $value, string $type): int|float|bool|string
     {
         return match ($type) {
-            'int'   => (int) $value,
+            'int' => (int) $value,
             'float' => match (strtoupper($value)) {
-                'NAN'              => NAN,
+                'NAN' => NAN,
                 'INFINITY', 'INF' => INF,
                 '-INFINITY', '-INF' => -INF,
-                default            => (float) $value,
+                default => (float) $value,
             },
-            'bool'  => $value === 't',
+            'bool' => $value === 't',
             default => $value,
         };
     }

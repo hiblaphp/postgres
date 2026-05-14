@@ -123,11 +123,11 @@ trait HandlerHelperTrait
                 $row[$col] = ($value === 't');
             } elseif (\is_string($value)) {
                 $row[$col] = match ($type) {
-                    'int_array'    => PgArrayParser::parse($value, 'int'),
-                    'float_array'  => PgArrayParser::parse($value, 'float'),
-                    'bool_array'   => PgArrayParser::parse($value, 'bool'),
+                    'int_array' => PgArrayParser::parse($value, 'int'),
+                    'float_array' => PgArrayParser::parse($value, 'float'),
+                    'bool_array' => PgArrayParser::parse($value, 'bool'),
                     'string_array' => PgArrayParser::parse($value, 'string'),
-                    default        => $value,
+                    default => $value,
                 };
             }
         }
