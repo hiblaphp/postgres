@@ -252,15 +252,25 @@ it('parses NaN for float', function () {
     expect(is_nan($result[0]))->toBeTrue();
 });
 
-it(
-    'falls back to string for an unknown cast type',
-    fn () => expect(PgArrayParser::parse('{1,2,3}', 'unknown'))->toBe(['1', '2', '3'])
-);
+it('returns raw strings for any unrecognised cast type', function () {
+    // Callers are responsible for further casting (e.g. JSON decoding).
+    // The parser always falls back to raw strings for unknown types.
+    expect(PgArrayParser::parse('{1,2,3}', 'unknown'))->toBe(['1', '2', '3'])
+        ->and(PgArrayParser::parse('{1,2,3}', 'numeric'))->toBe(['1', '2', '3']);
+});
 
-it(
-    'falls back to string for cast type json',
-    fn () => expect(PgArrayParser::parse('{foo,bar}', 'json'))->toBe(['foo', 'bar'])
-);
+it('returns numeric and decimal values as raw strings to preserve precision', function () {
+    // numeric/decimal are intentionally not cast to float or int.
+    // PHP floats are IEEE 754 and cannot represent arbitrary-precision values
+    // exactly. Callers that need precision arithmetic should use BCMath,
+    // brick/math, or moneyphp/money on the raw string value.
+    expect(PgArrayParser::parse('{0.1,0.2,0.3}', 'string'))
+        ->toBe(['0.1', '0.2', '0.3'])
+        ->and(PgArrayParser::parse('{99999999999999999.99}', 'string'))
+        ->toBe(['99999999999999999.99'])
+        ->and(PgArrayParser::parse('{0.30000000000000004}', 'string'))
+        ->toBe(['0.30000000000000004']);
+});
 
 it(
     'defaults to string cast when no type is specified',
