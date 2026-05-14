@@ -11,7 +11,6 @@ use Hibla\Postgres\Internals\ConnectionContext;
 use Hibla\Postgres\Internals\Result;
 use Hibla\Postgres\Traits\HandlerHelperTrait;
 use Hibla\Sql\Exceptions\ConnectionException;
-use Hibla\Sql\Exceptions\QueryException;
 use PgSql\Result as PostgresResult;
 
 /**
@@ -102,8 +101,7 @@ final class QueryResultHandler
             $status = pg_result_status($res);
 
             if ($status === PGSQL_FATAL_ERROR || $status === PGSQL_BAD_RESPONSE) {
-                $rawMsg = pg_result_error($res);
-                $this->ctx->queryError = new QueryException($rawMsg !== false && $rawMsg !== '' ? $rawMsg : 'Unknown query error');
+                $this->ctx->queryError = $this->createExceptionFromResult($res);
                 @pg_free_result($res);
 
                 continue; // Keep draining so libpq's buffer is fully flushed
@@ -121,9 +119,7 @@ final class QueryResultHandler
                     $casters = $this->buildTypeCaster($res);
 
                     while ($row = pg_fetch_assoc($res)) {
-                        $normalized = $this->normalizeRow($row);
-
-                        $context->push($this->applyTypeCasting($normalized, $casters));
+                        $context->push($this->applyTypeCasting($row, $casters));
                     }
                 }
                 @pg_free_result($res);

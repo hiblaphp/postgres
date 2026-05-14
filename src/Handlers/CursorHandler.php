@@ -91,10 +91,8 @@ final class CursorHandler
         $cursor = $this->ctx->cursor;
 
         if ($status === PGSQL_FATAL_ERROR || $status === PGSQL_BAD_RESPONSE) {
-            $rawMsg = pg_result_error($res);
-            $msg = $rawMsg !== false ? $rawMsg : '';
+            $error = $this->createExceptionFromResult($res);
             @pg_free_result($res);
-            $error = new QueryException($msg !== '' ? $msg : 'Unknown query error');
 
             if (
                 $cursor->ownsTransaction
@@ -176,9 +174,7 @@ final class CursorHandler
             $casters = $this->buildTypeCaster($res);
 
             while ($row = pg_fetch_assoc($res)) {
-                $normalized = $this->normalizeRow($row);
-
-                $context->push($this->applyTypeCasting($normalized, $casters));
+                $context->push($this->applyTypeCasting($row, $casters));
             }
         }
 
