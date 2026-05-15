@@ -32,6 +32,32 @@
     },
     "scripts": {
         "test": "./vendor/bin/pest",
+        "test:pg15": [
+            "@putenv POSTGRES_PORT=5443",
+            "@putenv POSTGRES_SSL_PORT=5444",
+            "./vendor/bin/pest --compact"
+        ],
+        "test:pg16": [
+            "@putenv POSTGRES_PORT=5445",
+            "@putenv POSTGRES_SSL_PORT=5446",
+            "./vendor/bin/pest --compact"
+        ],
+        "test:pg17": [
+            "@putenv POSTGRES_PORT=5447",
+            "@putenv POSTGRES_SSL_PORT=5448",
+            "./vendor/bin/pest --compact"
+        ],
+        "test:pg18": [
+            "@putenv POSTGRES_PORT=5449",
+            "@putenv POSTGRES_SSL_PORT=5450",
+            "./vendor/bin/pest --compact"
+        ],
+        "test:all": [
+            "@test:pg15",
+            "@test:pg16",
+            "@test:pg17",
+            "@test:pg18"
+        ],
         "format": "./vendor/bin/pint",
         "format-test": "./vendor/bin/pint --test",
         "analyze": "./vendor/bin/phpstan analyse"
