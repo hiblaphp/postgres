@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" 
-         xsi:noNamespaceSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd" 
-         bootstrap="vendor/autoload.php" 
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:noSchemaLocation="vendor/phpunit/phpunit/phpunit.xsd"
+         bootstrap="vendor/autoload.php"
          colors="true">
     <testsuites>
         <testsuite name="Test Suite">
@@ -14,18 +14,16 @@
         </include>
     </source>
     <php>
-        <!-- PostgreSQL -->
-        <env name="PGSQL_HOST" value="127.0.0.1" force="true"/>
-        <env name="PGSQL_PORT" value="5443" force="true"/>
-        <env name="PGSQL_DATABASE" value="postgres" force="true"/>
-        <env name="PGSQL_USERNAME" value="postgres" force="true"/>
-        <env name="PGSQL_PASSWORD" value="postgres" force="true"/>
+        <env name="POSTGRES_HOST" value="127.0.0.1" force="false"/>
+        <env name="POSTGRES_PORT" value="5443" force="false"/>
+        <env name="POSTGRES_DATABASE" value="postgres" force="false"/>
+        <env name="POSTGRES_USERNAME" value="postgres" force="false"/>
+        <env name="POSTGRES_PASSWORD" value="postgres" force="false"/>
 
-        <!-- PostgreSQL SSL -->
-        <env name="POSTGRES_SSL_HOST" value="127.0.0.1" force="true"/>
-        <env name="POSTGRES_SSL_PORT" value="5444" force="true"/>
-        <env name="POSTGRES_SSL_DATABASE" value="postgres" force="true"/>
-        <env name="POSTGRES_SSL_USERNAME" value="postgres" force="true"/>
-        <env name="POSTGRES_SSL_PASSWORD" value="postgres" force="true"/>
+        <env name="POSTGRES_SSL_HOST" value="127.0.0.1" force="false"/>
+        <env name="POSTGRES_SSL_PORT" value="5444" force="false"/>
+        <env name="POSTGRES_SSL_DATABASE" value="postgres" force="false"/>
+        <env name="POSTGRES_SSL_USERNAME" value="postgres" force="false"/>
+        <env name="POSTGRES_SSL_PASSWORD" value="postgres" force="false"/>
     </php>
 </phpunit>
