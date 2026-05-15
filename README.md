@@ -181,7 +181,7 @@ All operations return `PromiseInterface` objects. You can use `await()` for line
 
 Parameterized queries use the **PostgreSQL binary protocol** (prepared statements), which is more efficient and SQL-injection safe. The library accepts positional `?`, named `:name`, and native `$n` placeholders. Named and positional parameters are resolved entirely on the client side before the query is sent, so they work regardless of the PostgreSQL version.
 
-Streaming results support two modes. When `pg_set_chunked_rows_size` is available (PHP 8.4+), rows are delivered in chunks directly from the server buffer. When it is not available, the library falls back to **server-side cursors** (`DECLARE ... CURSOR FOR`) automatically. The fallback is transparent and requires no changes in your application code.
+Streaming results support two modes. When `pg_set_chunked_rows_size` is available (PHP 8.4+ and libpq 18+), rows are delivered in chunks directly from the server buffer. When it is not available, the library falls back to **server-side cursors** (`DECLARE ... CURSOR FOR`) automatically. The fallback is transparent and requires no changes in your application code.
 
 ```php
 use function Hibla\await;
