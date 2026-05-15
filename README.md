@@ -609,6 +609,8 @@ The library chooses the most efficient streaming strategy automatically:
 - **Chunked mode** (PHP 8.4+ with `pg_set_chunked_rows_size`): rows are delivered in chunks directly from the server's send buffer with no additional round-trips.
 - **Server-side cursor** (fallback): the library issues `DECLARE ... NO SCROLL CURSOR FOR` and loops with `FETCH n FROM cursor`, managing `BEGIN`/`COMMIT` automatically when not already inside a transaction.
 
+> Note: it requires libpq >= 18 compiled with your PHP version for pg_set_chunked_rows_size to work.
+
 Both modes are completely transparent from the application's perspective.
 
 ```php
