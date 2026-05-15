@@ -183,5 +183,6 @@ it('includes SSL parameters only when they are set', function () {
 
     expect($str)->toContain("sslrootcert='/path/to/ca'")
         ->and($str)->toContain("sslcert='/path/to/cert'")
-        ->and($str)->toContain("sslkey='/path/to/key'");
+        ->and($str)->toContain("sslkey='/path/to/key'")
+    ;
 });

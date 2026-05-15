@@ -616,15 +616,13 @@ describe('ParamParser', function (): void {
         });
 
         it('throws when mixing ? after :name', function (): void {
-            expect(fn () => ParamParser::parsePlaceholders('WHERE a = :name AND b = ?'))
-                ->toThrow(QueryException::class, 'Cannot mix')
-            ;
+            expect(fn() => ParamParser::parsePlaceholders('WHERE a = :name AND b = ?'))
+                ->toThrow(QueryException::class, 'Cannot mix');
         });
 
         it('throws when mixing :name after ?', function (): void {
-            expect(fn () => ParamParser::parsePlaceholders('WHERE a = ? AND b = :name'))
-                ->toThrow(QueryException::class, 'Cannot mix')
-            ;
+            expect(fn() => ParamParser::parsePlaceholders('WHERE a = ? AND b = :name'))
+                ->toThrow(QueryException::class, 'Cannot mix');
         });
 
         it('handles an unterminated single-quoted string gracefully', function (): void {
@@ -756,7 +754,7 @@ describe('ParamParser', function (): void {
         });
 
         it('handles a large number of named parameters', function (): void {
-            $parts = array_map(fn (int $n) => "col{$n} = :param{$n}", range(1, 200));
+            $parts = array_map(fn(int $n) => "col{$n} = :param{$n}", range(1, 200));
             $query = 'SELECT * FROM t WHERE ' . implode(' AND ', $parts);
             [$sql, $count, $names] = ParamParser::parsePlaceholders($query);
             expect($count)->toBe(200)
@@ -866,9 +864,8 @@ describe('ParamParser', function (): void {
         });
 
         it('throws when a required param name is missing from the array', function (): void {
-            expect(fn () => ParamParser::resolveNamed(['id', 'status'], ['id' => 1]))
-                ->toThrow(QueryException::class, ':status')
-            ;
+            expect(fn() => ParamParser::resolveNamed(['id', 'status'], ['id' => 1]))
+                ->toThrow(QueryException::class, ':status');
         });
 
         it('returns an empty array for empty paramNames', function (): void {
@@ -899,9 +896,8 @@ describe('ParamParser', function (): void {
         });
 
         it('throws when mixing ? and $n in the same query', function (): void {
-            expect(fn () => ParamParser::parse('WHERE a = ? AND b = $1', [1, 2]))
-                ->toThrow(QueryException::class)
-            ;
+            expect(fn() => ParamParser::parse('WHERE a = ? AND b = $1', [1, 2]))
+                ->toThrow(QueryException::class);
         });
 
         it('normalises a non-zero-indexed array to a flat indexed array', function (): void {
@@ -938,16 +934,15 @@ describe('ParamParser', function (): void {
         });
 
         it('throws when a named param is missing from the associative array', function (): void {
-            expect(fn () => ParamParser::parse(
+            expect(fn() => ParamParser::parse(
                 'WHERE id = :id AND status = :status',
                 ['id' => 1]
             ))->toThrow(QueryException::class, ':status');
         });
 
         it('throws when no :name placeholders are found but an associative array is provided', function (): void {
-            expect(fn () => ParamParser::parse('SELECT * FROM t WHERE id = $1', ['id' => 1]))
-                ->toThrow(QueryException::class)
-            ;
+            expect(fn() => ParamParser::parse('SELECT * FROM t WHERE id = $1', ['id' => 1]))
+                ->toThrow(QueryException::class);
         });
 
         it('passes non-boolean values through unchanged', function (): void {
@@ -958,21 +953,18 @@ describe('ParamParser', function (): void {
         it('throws when an indexed array is passed for a named-placeholder query', function (): void {
             // parse() must detect the SQL contains :name placeholders and reject
             // the indexed array rather than silently returning unconverted SQL
-            expect(fn () => ParamParser::parse('SELECT * FROM t WHERE id = :id', [42]))
-                ->toThrow(QueryException::class)
-            ;
+            expect(fn() => ParamParser::parse('SELECT * FROM t WHERE id = :id', [42]))
+                ->toThrow(QueryException::class);
         });
 
         it('throws when an associative array is passed for a ? query', function (): void {
-            expect(fn () => ParamParser::parse('SELECT * FROM t WHERE id = ?', ['id' => 42]))
-                ->toThrow(QueryException::class)
-            ;
+            expect(fn() => ParamParser::parse('SELECT * FROM t WHERE id = ?', ['id' => 42]))
+                ->toThrow(QueryException::class);
         });
 
         it('throws when the query contains multiple statements', function (): void {
-            expect(fn () => ParamParser::parse('SELECT :a; DROP TABLE users', ['a' => 1]))
-                ->toThrow(QueryException::class)
-            ;
+            expect(fn() => ParamParser::parse('SELECT :a; DROP TABLE users', ['a' => 1]))
+                ->toThrow(QueryException::class);
         });
 
         it('does not throw for a semicolon inside a string literal', function (): void {
@@ -992,6 +984,132 @@ describe('ParamParser', function (): void {
             );
             expect($sql)->toBe("SELECT * FROM t -- semicolon here; ignored\nWHERE id = \$1")
                 ->and($params)->toBe([1])
+            ;
+        });
+
+        it('treats a backslash in a plain string as literal, not an escape (the Reddit bug)', function (): void {
+            // 'a\' is a COMPLETE string (a + backslash); the ' closes it.
+            // The ? that follows is a real parameter, not inside the string.
+            [$sql, $count, $names] = ParamParser::parsePlaceholders(
+                "SELECT * FROM foo WHERE a = 'a\\' AND b = ?"
+            );
+            expect($sql)->toBe("SELECT * FROM foo WHERE a = 'a\\' AND b = \$1")
+                ->and($count)->toBe(1)
+                ->and($names)->toBe([])
+            ;
+        });
+
+        it('treats a backslash in a plain string as literal with a named placeholder after it', function (): void {
+            [$sql, $count, $names] = ParamParser::parsePlaceholders(
+                "SELECT * FROM foo WHERE a = 'a\\' AND b = :b"
+            );
+            expect($sql)->toBe("SELECT * FROM foo WHERE a = 'a\\' AND b = \$1")
+                ->and($count)->toBe(1)
+                ->and($names)->toBe(['b'])
+            ;
+        });
+
+        it('does not treat a double-backslash in a plain string as escaping anything', function (): void {
+            // '\\' is two literal backslash characters; the second ' closes the string.
+            // The named param that follows is real.
+            [$sql, $count, $names] = ParamParser::parsePlaceholders(
+                "SELECT * FROM t WHERE path = '\\\\' AND id = :id"
+            );
+            expect($sql)->toBe("SELECT * FROM t WHERE path = '\\\\' AND id = \$1")
+                ->and($count)->toBe(1)
+                ->and($names)->toBe(['id'])
+            ;
+        });
+
+        it('treats multiple backslashes in a plain string as all literal', function (): void {
+            // Each \ is just a character; none of them escape the following quote.
+            [$sql, $count, $names] = ParamParser::parsePlaceholders(
+                "SELECT * FROM t WHERE x = '\\'\\'' AND id = :id"
+            );
+            expect($sql)->toBe("SELECT * FROM t WHERE x = '\\'\\'' AND id = \$1")
+                ->and($count)->toBe(1)
+                ->and($names)->toBe(['id'])
+            ;
+        });
+
+        it('correctly distinguishes a plain string from an E-string with the same backslash content', function (): void {
+            // Plain 'a\' → complete string, param after it is real ($1)
+            // E'a\' → unclosed string, :trap inside is swallowed, only :real is a param ($1)
+            [$plainSql, $plainCount] = ParamParser::parsePlaceholders(
+                "WHERE a = 'a\\' AND b = :real"
+            );
+            [$escapeSql, $escapeCount] = ParamParser::parsePlaceholders(
+                "WHERE a = E'a\\' AND b = :trap' AND c = :real"
+            );
+            expect($plainCount)->toBe(1)   // plain: \' ends the string, :real is a param
+                ->and($escapeCount)->toBe(1) // escape: \' keeps string open, :trap is swallowed
+            ;
+        });
+
+        it('keeps a backslash-quoted single quote inside an E-string from closing the string (positional)', function (): void {
+            // E'it\'s a trap ?' — the \' is an escape; the ? inside is NOT a param.
+            [$sql, $count] = ParamParser::parsePlaceholders(
+                "SELECT * FROM t WHERE name = E'it\\'s a trap ?' AND id = ?"
+            );
+            expect($sql)->toBe("SELECT * FROM t WHERE name = E'it\\'s a trap ?' AND id = \$1")
+                ->and($count)->toBe(1)
+            ;
+        });
+
+        it('handles a plain string containing only a backslash', function (): void {
+            // The string '\' contains exactly one character: a backslash.
+            // The closing quote is the one right after it.
+            [$sql, $count, $names] = ParamParser::parsePlaceholders(
+                "SELECT * FROM t WHERE sep = '\\' AND id = :id"
+            );
+            expect($sql)->toBe("SELECT * FROM t WHERE sep = '\\' AND id = \$1")
+                ->and($count)->toBe(1)
+                ->and($names)->toBe(['id'])
+            ;
+        });
+
+        it('handles an E-string with a double-backslash followed by a real closing quote', function (): void {
+            // E'\\' → \\ is an escaped backslash, then ' closes the string.
+            // The param after it is real.
+            [$sql, $count, $names] = ParamParser::parsePlaceholders(
+                "SELECT * FROM t WHERE path = E'\\\\' AND id = :id"
+            );
+            expect($sql)->toBe("SELECT * FROM t WHERE path = E'\\\\' AND id = \$1")
+                ->and($count)->toBe(1)
+                ->and($names)->toBe(['id'])
+            ;
+        });
+
+        it('handles an E-string with a newline escape without breaking param detection', function (): void {
+            [$sql, $count, $names] = ParamParser::parsePlaceholders(
+                "SELECT * FROM t WHERE note = E'line1\\nline2' AND id = :id"
+            );
+            expect($sql)->toBe("SELECT * FROM t WHERE note = E'line1\\nline2' AND id = \$1")
+                ->and($count)->toBe(1)
+                ->and($names)->toBe(['id'])
+            ;
+        });
+
+        it('handles a lowercase e-string with a backslash-escaped quote without leaving string mode', function (): void {
+            [$sql, $count, $names] = ParamParser::parsePlaceholders(
+                "SELECT * FROM t WHERE name = e'it\\'s :trap' AND id = :id"
+            );
+            expect($sql)->toBe("SELECT * FROM t WHERE name = e'it\\'s :trap' AND id = \$1")
+                ->and($count)->toBe(1)
+                ->and($names)->toBe(['id'])
+            ;
+        });
+
+        it('handles adjacent plain and E-strings in the same query', function (): void {
+            // 'a\' is a complete plain string (backslash is literal).
+            // E'b\'' is an E-string where \' is an escaped quote.
+            // :real after both is the only real param.
+            [$sql, $count, $names] = ParamParser::parsePlaceholders(
+                "SELECT * FROM t WHERE a = 'x\\' AND b = E'y\\'' AND id = :id"
+            );
+            expect($sql)->toBe("SELECT * FROM t WHERE a = 'x\\' AND b = E'y\\'' AND id = \$1")
+                ->and($count)->toBe(1)
+                ->and($names)->toBe(['id'])
             ;
         });
     });

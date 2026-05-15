@@ -25,9 +25,9 @@ function makeResult(array $overrides = []): Result
         affectedRows: $overrides['affectedRows'] ?? 0,
         lastInsertId: $overrides['lastInsertId'] ?? 0,
         connectionId: $overrides['connectionId'] ?? 0,
-        insertedOid:  $overrides['insertedOid'] ?? null,
-        columns:      $overrides['columns'] ?? makeColumns(),
-        rows:         $overrides['rows'] ?? makeRows(),
+        insertedOid: $overrides['insertedOid'] ?? null,
+        columns: $overrides['columns'] ?? makeColumns(),
+        rows: $overrides['rows'] ?? makeRows(),
     );
 }
 
@@ -257,6 +257,7 @@ describe('nextResult()', function () {
 
         expect($first->nextResult())->toBe($second)
             ->and($first->nextResult()->nextResult())->toBe($third)
-            ->and($first->nextResult()->nextResult()->nextResult())->toBeNull();
+            ->and($first->nextResult()->nextResult()->nextResult())->toBeNull()
+        ;
     });
 });

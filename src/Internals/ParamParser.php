@@ -34,9 +34,15 @@ final class ParamParser
         $result = '';
         $length = \strlen($sql);
         $state = 'NORMAL';
-        $blockDepth = 0;       // tracks nesting level for /* ... */ comments
-        $dollarTag = null;    // the opening $tag$ we are waiting to close
+        $blockDepth = 0;      // tracks nesting level for /* ... */ comments
+        $dollarTag = null;   // the opening $tag$ we are waiting to close
         $hasBareStatement = false;
+
+        // Whether the current single-quoted string was opened with an E/e prefix.
+        // When true, backslash is an escape character (e.g. E'\n', E'\'').
+        // When false (plain '...'), backslash is a literal character per the
+        // SQL standard and does NOT escape the following quote.
+        $isEscapeString = false;
 
         for ($i = 0; $i < $length; $i++) {
             $char = $sql[$i];
@@ -52,9 +58,34 @@ final class ParamParser
                     continue;
                 }
 
-                // Single / double quoted string literals
-                if ($char === "'" || $char === '"') {
-                    $state = $char;
+                // Escape string literal: E'...' or e'...'
+                // Backslash IS an escape character inside these strings, so they
+                // need separate tracking from plain single-quoted strings.
+                if (($char === 'E' || $char === 'e') && $next === "'") {
+                    $state = "'";
+                    $isEscapeString = true;
+                    $result .= $char . $next; // consume both E and '
+                    $i++;
+
+                    continue;
+                }
+
+                // Plain single-quoted string literal: '...'
+                // Per the SQL standard (and PostgreSQL's default since 9.1),
+                // backslash has NO special meaning here and it is a literal character.
+                if ($char === "'") {
+                    $state = "'";
+                    $isEscapeString = false;
+                    $result .= $char;
+
+                    continue;
+                }
+
+                // Double-quoted identifier: "..."
+                // Backslash is never special inside double-quoted identifiers.
+                if ($char === '"') {
+                    $state = '"';
+                    $isEscapeString = false;
                     $result .= $char;
 
                     continue;
@@ -218,17 +249,26 @@ final class ParamParser
             } elseif ($state === "'" || $state === '"') {
                 $result .= $char;
 
-                if ($char === '\\' && $next !== '') {
-                    // Consume escaped character (e.g. E'\n', E'\'')
-                    $result .= $next;
-                    $i++;
+                if ($char === '\\') {
+                    // Backslash escape sequences are ONLY valid inside E'...' strings.
+                    // Inside plain '...' strings (standard SQL) or double-quoted
+                    // identifiers, a backslash is a literal character and must NOT
+                    // be allowed to consume the next character — doing so was the
+                    // original bug that caused 'a\' to be treated as an unclosed
+                    // string instead of the two-character string: a\
+                    if ($isEscapeString && $next !== '') {
+                        $result .= $next;
+                        $i++;
+                    }
                 } elseif ($char === $state) {
-                    // Doubled-quote escape: 'O''Reilly' or ""ident""
+                    // Doubled-quote escape works in all string types: 'O''Reilly',
+                    // E'O''Reilly', or "some""ident"
                     if ($next === $state) {
                         $result .= $next;
                         $i++;
                     } else {
                         $state = 'NORMAL';
+                        $isEscapeString = false;
                     }
                 }
 

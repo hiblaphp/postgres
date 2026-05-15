@@ -13,7 +13,7 @@
 | Feature | Status | Notes |
 |---|---|---|
 | Lazy connection pooling | Supported | No TCP connections opened until the first query |
-| Parameterized queries | Supported | Binary protocol via prepared statements, SQL-injection safe |
+| Parameterized queries | Supported | SQL-injection safe via prepared statements; note that ext-pgsql sends parameters and results over the text protocol and binary protocol is not exposed by the extension |
 | Named parameters (`:name`) | Supported | Parsed into positional `$n` at the client, works with `query()`, `prepare()`, and all transaction methods |
 | Positional `?` parameters | Supported | Converted to `$1, $2, ...` format automatically |
 | `$n` parameters | Supported | Passed through as-is when already in PostgreSQL format |
@@ -179,7 +179,7 @@ await($client->notify('user.events', json_encode(['type' => 'login', 'id' => 42]
 
 All operations return `PromiseInterface` objects. You can use `await()` for linear code or `.then()` chaining.
 
-Parameterized queries use the **PostgreSQL binary protocol** (prepared statements), which is more efficient and SQL-injection safe. The library accepts positional `?`, named `:name`, and native `$n` placeholders. Named and positional parameters are resolved entirely on the client side before the query is sent, so they work regardless of the PostgreSQL version.
+Parameterized queries use prepared statements, which are SQL-injection safe and benefit from server-side plan caching. Note that ext-pgsql hardcodes the text protocol for both parameter encoding and result delivery so the resultFormat argument to PQsendQueryParams is always 0. Binary protocol is not exposed by the extension, so column values are returned as strings and cast client-side by the OID-based decoder rather than decoded from binary wire format.
 
 Streaming results support two modes. When `pg_set_chunked_rows_size` is available (PHP 8.4+ and libpq 18+), rows are delivered in chunks directly from the server buffer. When it is not available, the library falls back to **server-side cursors** (`DECLARE ... CURSOR FOR`) automatically. The fallback is transparent and requires no changes in your application code.
 
@@ -459,9 +459,9 @@ $client = new PostgresClient(
 $result = await($client->query('SELECT * FROM users LIMIT 10'));
 ```
 
-### Queries with parameters (binary prepared statements)
+### Queries with parameters (prepared statements)
 
-When `$params` are provided, the library automatically uses a prepared statement over the binary protocol. Three placeholder formats are supported and can be chosen freely per query.
+When $params are provided, the library uses a prepared statement, which is SQL-injection safe and allows the server to cache the query plan. Parameters and results are transmitted over the text protocol but this is a limitation of ext-pgsql, which hardcodes resultFormat = 0 in its PQsendQueryParams call regardless of column types.
 
 **Native PostgreSQL `$n` placeholders:**
 
@@ -1223,6 +1223,8 @@ When `castPreparedTypes` is `false`, every column value is returned as a PHP `st
 
 The casting is **OID-based**: the library reads the field type OID from the result metadata and applies the appropriate conversion. This is more precise than name-based heuristics because it works correctly with custom domains and type aliases.
 
+> Note: Because ext-pgsql uses the text protocol even on prepared statements, all column values arrive as PHP strings. The OID-based decoder then casts them to native PHP types client-side. This is different from true binary protocol decoding but produces the same result for the supported scalar and array types.
+
 ### Scalar types
 
 | PostgreSQL OID | PostgreSQL type | PHP type returned |
@@ -1327,7 +1329,7 @@ Implements `Hibla\Postgres\Interfaces\PostgresClientInterface`.
 | Method / Property | Returns | Description |
 |---|---|---|
 | `$stats` | `array<string, int\|bool>` | Snapshot of pool state. No database round-trip. |
-| `query(string $sql, array $params = [])` | `Promise<PostgresResult>` | Execute a query. Uses binary protocol when params are given. Supports all placeholder formats. |
+| `query(string $sql, array $params = [])` | ... | Execute a query. Uses a prepared statement when params are given (text protocol, see note on ext-pgsql limitations). |
 | `execute(string $sql, array $params = [])` | `Promise<int>` | Execute and return affected row count. |
 | `executeGetId(string $sql, array $params = [])` | `Promise<int>` | Execute and return the first column of the first row as an integer. Designed for use with `RETURNING id`. |
 | `fetchOne(string $sql, array $params = [])` | `Promise<array\|null>` | First row as associative array, or null. |
