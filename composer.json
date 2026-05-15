@@ -1,6 +1,6 @@
 {
     "name": "hiblaphp/postgres",
-    "description": "High Performance Pure Non Blocking Postgre Driver",
+    "description": "High Performance Enterprise Grade Pure Non Blocking Postgre Driver",
     "type": "library",
     "license": "MIT",
     "autoload": {
