@@ -55,9 +55,10 @@
 - [The PostgresClient](#the-postgresclient)
 - [Making queries](#making-queries)
   - [Simple queries](#simple-queries-text-protocol)
-  - [Queries with parameters](#queries-with-parameters-binary-prepared-statements)
+  - [Queries with parameters](#queries-with-parameters-prepared-statements)
   - [Named parameters](#named-parameters)
   - [Convenience methods](#convenience-methods)
+- [SQL parser](#sql-parser)
 - [Prepared statements](#prepared-statements)
 - [Streaming results](#streaming-results)
 - [Transactions](#transactions)
@@ -497,6 +498,30 @@ $result = await(
 ```
 
 > You cannot mix placeholder formats within the same query. Attempting to do so throws a `QueryException`.
+
+## SQL parser
+
+The parameter placeholder parser assumes `standard_conforming_strings = on`, which has
+been the PostgreSQL default since version 9.1 and is enabled on every currently maintained
+PostgreSQL version (15, 16, 17, 18).
+
+Under this setting, single-quoted strings use `''` to escape a literal quote, and backslashes
+are treated as ordinary characters. The parser correctly handles:
+
+- Single-quoted strings: `'it''s fine'`
+- Dollar-quoted strings: `$$...$$` and `$tag$...$tag$`
+- The `::` cast operator (never mistaken for a named placeholder)
+- The `:=` PL/pgSQL assignment operator
+
+**If your server has `standard_conforming_strings = off`**, the escape string syntax
+(`E'...'` or backslash escapes in plain strings) is not currently recognised by the parser.
+A placeholder that appears inside an escape string literal may be incorrectly substituted.
+This setting is `off` by default only on PostgreSQL 8.x and earlier, and on any server where
+a DBA has explicitly disabled it for legacy application compatibility.
+
+> **Planned:** A future release will add a `standardConformingStrings` config flag to
+> `PgSqlConfig` so the parser can be switched to escape-string-aware mode for servers
+> that have this option turned off.
 
 ### Named parameters
 
