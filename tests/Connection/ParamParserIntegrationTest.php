@@ -2,6 +2,7 @@
 
 declare(strict_types=1);
 
+use Hibla\Sql\Exceptions\PreparedException;
 use Hibla\Sql\Exceptions\QueryException;
 
 use function Hibla\await;
@@ -176,7 +177,7 @@ describe('Live connection — named params (:name)', function () {
 
             try {
                 expect(fn () => await($stmt->execute(['a' => 1])))
-                    ->toThrow(QueryException::class, "':b'")
+                    ->toThrow(PreparedException::class, 'Missing value for named parameter: :b')
                 ;
             } finally {
                 await($stmt->close());
@@ -242,7 +243,7 @@ describe('Live connection — edge cases and guard rails', function () {
 
         try {
             expect(fn () => await($conn->prepare('SELECT ?, :name')))
-                ->toThrow(QueryException::class, 'Cannot mix')
+                ->toThrow(PreparedException::class, 'Cannot mix')
             ;
         } finally {
             $conn->close();
@@ -274,7 +275,7 @@ describe('Live connection — edge cases and guard rails', function () {
             await($stmt->close());
 
             expect(fn () => $stmt->execute(['v' => 1]))
-                ->toThrow(Hibla\Sql\Exceptions\PreparedException::class)
+                ->toThrow(PreparedException::class)
             ;
         } finally {
             $conn->close();

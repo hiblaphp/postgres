@@ -5,7 +5,7 @@ declare(strict_types=1);
 namespace Hibla\Postgres\Tests\Internals;
 
 use Hibla\Postgres\Internals\ParamParser;
-use Hibla\Sql\Exceptions\QueryException;
+use Hibla\Sql\Exceptions\PreparedException;
 
 describe('ParamParser', function (): void {
     describe('parsePlaceholders()', function (): void {
@@ -616,13 +616,15 @@ describe('ParamParser', function (): void {
         });
 
         it('throws when mixing ? after :name', function (): void {
-            expect(fn() => ParamParser::parsePlaceholders('WHERE a = :name AND b = ?'))
-                ->toThrow(QueryException::class, 'Cannot mix');
+            expect(fn () => ParamParser::parsePlaceholders('WHERE a = :name AND b = ?'))
+                ->toThrow(PreparedException::class, 'Cannot mix named and positional parameters')
+            ;
         });
 
         it('throws when mixing :name after ?', function (): void {
-            expect(fn() => ParamParser::parsePlaceholders('WHERE a = ? AND b = :name'))
-                ->toThrow(QueryException::class, 'Cannot mix');
+            expect(fn () => ParamParser::parsePlaceholders('WHERE a = ? AND b = :name'))
+                ->toThrow(PreparedException::class, 'Cannot mix named and positional parameters')
+            ;
         });
 
         it('handles an unterminated single-quoted string gracefully', function (): void {
@@ -754,7 +756,7 @@ describe('ParamParser', function (): void {
         });
 
         it('handles a large number of named parameters', function (): void {
-            $parts = array_map(fn(int $n) => "col{$n} = :param{$n}", range(1, 200));
+            $parts = array_map(fn (int $n) => "col{$n} = :param{$n}", range(1, 200));
             $query = 'SELECT * FROM t WHERE ' . implode(' AND ', $parts);
             [$sql, $count, $names] = ParamParser::parsePlaceholders($query);
             expect($count)->toBe(200)
@@ -864,8 +866,9 @@ describe('ParamParser', function (): void {
         });
 
         it('throws when a required param name is missing from the array', function (): void {
-            expect(fn() => ParamParser::resolveNamed(['id', 'status'], ['id' => 1]))
-                ->toThrow(QueryException::class, ':status');
+            expect(fn () => ParamParser::resolveNamed(['id', 'status'], ['id' => 1]))
+                ->toThrow(PreparedException::class, ':status')
+            ;
         });
 
         it('returns an empty array for empty paramNames', function (): void {
@@ -896,8 +899,12 @@ describe('ParamParser', function (): void {
         });
 
         it('throws when mixing ? and $n in the same query', function (): void {
-            expect(fn() => ParamParser::parse('WHERE a = ? AND b = $1', [1, 2]))
-                ->toThrow(QueryException::class);
+            expect(fn () => ParamParser::parse('WHERE a = ? AND b = $1', [1, 2]))
+                ->toThrow(
+                    PreparedException::class,
+                    'Cannot mix ? and $n placeholder formats in the same query'
+                )
+            ;
         });
 
         it('normalises a non-zero-indexed array to a flat indexed array', function (): void {
@@ -934,15 +941,16 @@ describe('ParamParser', function (): void {
         });
 
         it('throws when a named param is missing from the associative array', function (): void {
-            expect(fn() => ParamParser::parse(
+            expect(fn () => ParamParser::parse(
                 'WHERE id = :id AND status = :status',
                 ['id' => 1]
-            ))->toThrow(QueryException::class, ':status');
+            ))->toThrow(PreparedException::class, ':status');
         });
 
         it('throws when no :name placeholders are found but an associative array is provided', function (): void {
-            expect(fn() => ParamParser::parse('SELECT * FROM t WHERE id = $1', ['id' => 1]))
-                ->toThrow(QueryException::class);
+            expect(fn () => ParamParser::parse('SELECT * FROM t WHERE id = $1', ['id' => 1]))
+                ->toThrow(PreparedException::class)
+            ;
         });
 
         it('passes non-boolean values through unchanged', function (): void {
@@ -953,18 +961,21 @@ describe('ParamParser', function (): void {
         it('throws when an indexed array is passed for a named-placeholder query', function (): void {
             // parse() must detect the SQL contains :name placeholders and reject
             // the indexed array rather than silently returning unconverted SQL
-            expect(fn() => ParamParser::parse('SELECT * FROM t WHERE id = :id', [42]))
-                ->toThrow(QueryException::class);
+            expect(fn () => ParamParser::parse('SELECT * FROM t WHERE id = :id', [42]))
+                ->toThrow(PreparedException::class)
+            ;
         });
 
         it('throws when an associative array is passed for a ? query', function (): void {
-            expect(fn() => ParamParser::parse('SELECT * FROM t WHERE id = ?', ['id' => 42]))
-                ->toThrow(QueryException::class);
+            expect(fn () => ParamParser::parse('SELECT * FROM t WHERE id = ?', ['id' => 42]))
+                ->toThrow(PreparedException::class)
+            ;
         });
 
         it('throws when the query contains multiple statements', function (): void {
-            expect(fn() => ParamParser::parse('SELECT :a; DROP TABLE users', ['a' => 1]))
-                ->toThrow(QueryException::class);
+            expect(fn () => ParamParser::parse('SELECT :a; DROP TABLE users', ['a' => 1]))
+                ->toThrow(PreparedException::class)
+            ;
         });
 
         it('does not throw for a semicolon inside a string literal', function (): void {

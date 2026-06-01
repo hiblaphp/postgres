@@ -5,7 +5,6 @@ declare(strict_types=1);
 use Hibla\Promise\Promise;
 use Hibla\Sql\Exceptions\ConnectionException;
 use Hibla\Sql\Exceptions\PreparedException;
-use Hibla\Sql\Exceptions\QueryException;
 use Hibla\Sql\RowStream;
 
 use function Hibla\await;
@@ -208,7 +207,7 @@ describe('Prepared Statement Handling', function () {
 
             try {
                 expect(fn () => await($stmt->execute(['a' => 1])))
-                    ->toThrow(QueryException::class, "Missing value for named parameter ':b'")
+                    ->toThrow(PreparedException::class, 'Missing value for named parameter: :b')
                 ;
             } finally {
                 await($stmt->close());

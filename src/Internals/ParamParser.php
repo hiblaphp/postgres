@@ -4,7 +4,7 @@ declare(strict_types=1);
 
 namespace Hibla\Postgres\Internals;
 
-use Hibla\Sql\Exceptions\QueryException;
+use Hibla\Sql\Exceptions\PreparedException;
 
 /**
  * @internal
@@ -170,7 +170,7 @@ final class ParamParser
                 // Positional ? placeholder
                 if ($char === '?' && $hasQuestion) {
                     if ($paramNames !== []) {
-                        throw new QueryException('Cannot mix ? and :name placeholder formats in the same query');
+                        throw new PreparedException('Cannot mix named and positional parameters in the same query.');
                     }
 
                     $result .= '$' . (++$count);
@@ -205,7 +205,7 @@ final class ParamParser
 
                         if ($validFirst) {
                             if ($count > 0 && $paramNames === []) {
-                                throw new QueryException('Cannot mix ? and :name placeholder formats in the same query');
+                                throw new PreparedException('Cannot mix named and positional parameters in the same query.');
                             }
 
                             $j = $nameStart;
@@ -346,7 +346,7 @@ final class ParamParser
         $hasQuestion = str_contains($sql, '?');
 
         if ($hasDollar && $hasQuestion) {
-            throw new QueryException('Cannot mix ? and $n placeholder formats in the same query');
+            throw new PreparedException('Cannot mix ? and $n placeholder formats in the same query');
         }
 
         // Detect named placeholders when an indexed array was supplied — must throw
@@ -355,7 +355,7 @@ final class ParamParser
             [,, $names] = self::parsePlaceholders($sql);
 
             if ($names !== []) {
-                throw new QueryException(
+                throw new PreparedException(
                     'Named placeholders found in query but an indexed params array was provided'
                 );
             }
@@ -370,7 +370,7 @@ final class ParamParser
         [$converted,,, $hasBareStatement] = self::parsePlaceholders($sql);
 
         if ($hasBareStatement) {
-            throw new QueryException('Multiple statements in a single query are not allowed');
+            throw new PreparedException('Multiple statements in a single query are not allowed');
         }
 
         return [$converted, $indexedParams];
@@ -391,7 +391,7 @@ final class ParamParser
 
         foreach ($paramNames as $name) {
             if (! \array_key_exists($name, $params)) {
-                throw new QueryException("Missing value for named parameter ':$name'");
+                throw new PreparedException("Missing value for named parameter: :{$name}");
             }
 
             $out[] = $params[$name];
@@ -410,11 +410,11 @@ final class ParamParser
         [$convertedSql,, $paramNames, $hasBareStatement] = self::parsePlaceholders($sql);
 
         if ($hasBareStatement) {
-            throw new QueryException('Multiple statements in a single query are not allowed');
+            throw new PreparedException('Multiple statements in a single query are not allowed');
         }
 
         if ($paramNames === []) {
-            throw new QueryException('Named params array provided but no :name placeholders found in query');
+            throw new PreparedException('Named params array provided but no named parameters found in query.');
         }
 
         return [$convertedSql, self::resolveNamed($paramNames, $params)];
