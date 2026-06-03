@@ -250,6 +250,12 @@ final class RowStream implements SqlRowStream, StreamContext
         }
 
         $this->buffer = new SplQueue();
+
+        // Force resume the stream handler so the connection can read the 
+        // remaining results and the Postgres ErrorResponse off the wire.
+        if ($this->resumeCallback !== null) {
+            ($this->resumeCallback)();
+        }
     }
 
     /**
